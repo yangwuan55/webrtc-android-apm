@@ -17,22 +17,29 @@
 
 namespace webrtc {
 CpuLinux::CpuLinux()
-{
-    m_oldBusyTime = 0;
-    m_oldIdleTime = 0;
-    m_numCores = 0;
-    m_numCores = GetNumCores();
-    m_oldBusyTimeMulti = new long long[m_numCores];
-    memset(m_oldBusyTimeMulti, 0, sizeof(long long) * m_numCores);
-    m_oldIdleTimeMulti = new long long[m_numCores];
-    memset(m_oldIdleTimeMulti, 0, sizeof(long long) * m_numCores);
-    m_idleArray = new long long[m_numCores];
-    memset(m_idleArray, 0, sizeof(long long) * m_numCores);
-    m_busyArray = new long long[m_numCores];
-    memset(m_busyArray, 0, sizeof(long long) * m_numCores);
-    m_resultArray = new WebRtc_UWord32[m_numCores];
+    : m_oldBusyTime(0),
+      m_oldIdleTime(0),
+      m_oldBusyTimeMulti(NULL),
+      m_oldIdleTimeMulti(NULL),
+      m_idleArray(NULL),
+      m_busyArray(NULL),
+      m_resultArray(NULL),
+      m_numCores(0) {
+    const int result = GetNumCores();
+    if (result != -1) {
+      m_numCores = result;
+      m_oldBusyTimeMulti = new long long[m_numCores];
+      memset(m_oldBusyTimeMulti, 0, sizeof(long long) * m_numCores);
+      m_oldIdleTimeMulti = new long long[m_numCores];
+      memset(m_oldIdleTimeMulti, 0, sizeof(long long) * m_numCores);
+      m_idleArray = new long long[m_numCores];
+      memset(m_idleArray, 0, sizeof(long long) * m_numCores);
+      m_busyArray = new long long[m_numCores];
+      memset(m_busyArray, 0, sizeof(long long) * m_numCores);
+      m_resultArray = new WebRtc_UWord32[m_numCores];
 
-    GetData(m_oldBusyTime, m_oldIdleTime, m_busyArray, m_idleArray);
+      GetData(m_oldBusyTime, m_oldIdleTime, m_busyArray, m_idleArray);
+    }
 }
 
 CpuLinux::~CpuLinux()
@@ -58,7 +65,8 @@ WebRtc_Word32 CpuLinux::CpuUsageMultiCore(WebRtc_UWord32& numCores,
     numCores = m_numCores;
     long long busy = 0;
     long long idle = 0;
-    GetData(busy, idle, m_busyArray, m_idleArray);
+    if (GetData(busy, idle, m_busyArray, m_idleArray) != 0)
+        return -1;
 
     long long deltaBusy = busy - m_oldBusyTime;
     long long deltaIdle = idle - m_oldIdleTime;
@@ -109,18 +117,28 @@ int CpuLinux::GetData(long long& busy, long long& idle, long long*& busyArray,
     }
 
     char line[100];
-    char* dummy = fgets(line, 100, fp);
+    if (fgets(line, 100, fp) == NULL) {
+        fclose(fp);
+        return -1;
+    }
     char firstWord[100];
-    sscanf(line, "%s ", firstWord);
-    if(strncmp(firstWord, "cpu", 3)!=0)
-    {
+    if (sscanf(line, "%s ", firstWord) != 1) {
+        fclose(fp);
+        return -1;
+    }
+    if (strncmp(firstWord, "cpu", 3) != 0) {
+        fclose(fp);
         return -1;
     }
     char sUser[100];
     char sNice[100];
     char sSystem[100];
     char sIdle[100];
-    sscanf(line, "%s %s %s %s %s ", firstWord, sUser, sNice, sSystem, sIdle);
+    if (sscanf(line, "%s %s %s %s %s ",
+               firstWord, sUser, sNice, sSystem, sIdle) != 5) {
+        fclose(fp);
+        return -1;
+    }
     long long luser = atoll(sUser);
     long long lnice = atoll(sNice);
     long long lsystem = atoll(sSystem);
@@ -130,9 +148,15 @@ int CpuLinux::GetData(long long& busy, long long& idle, long long*& busyArray,
     idle = lidle;
     for (WebRtc_UWord32 i = 0; i < m_numCores; i++)
     {
-        dummy = fgets(line, 100, fp);
-        sscanf(line, "%s %s %s %s %s ", firstWord, sUser, sNice, sSystem,
-               sIdle);
+        if (fgets(line, 100, fp) == NULL) {
+            fclose(fp);
+            return -1;
+        }
+        if (sscanf(line, "%s %s %s %s %s ", firstWord, sUser, sNice, sSystem,
+                   sIdle) != 5) {
+            fclose(fp);
+            return -1;
+        }
         luser = atoll(sUser);
         lnice = atoll(sNice);
         lsystem = atoll(sSystem);
@@ -153,7 +177,10 @@ int CpuLinux::GetNumCores()
     }
     // Skip first line
     char line[100];
-    char* dummy = fgets(line, 100, fp);
+    if (!fgets(line, 100, fp))
+    {
+        return -1;
+    }
     int numCores = -1;
     char firstWord[100];
     do
@@ -161,7 +188,9 @@ int CpuLinux::GetNumCores()
         numCores++;
         if (fgets(line, 100, fp))
         {
-            sscanf(line, "%s ", firstWord);
+            if (sscanf(line, "%s ", firstWord) != 1) {
+                firstWord[0] = '\0';
+            }
         } else {
             break;
         }

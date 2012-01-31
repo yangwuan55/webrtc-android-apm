@@ -6,91 +6,44 @@
 # in the file PATENTS.  All contributing project authors may
 # be found in the AUTHORS file in the root of the source tree.
 
-MY_APM_WHOLE_STATIC_LIBRARIES := \
-    libwebrtc_spl \
-    libwebrtc_resampler \
-    libwebrtc_apm \
-    libwebrtc_apm_utility \
-    libwebrtc_vad \
-    libwebrtc_ns \
-    libwebrtc_agc \
-    libwebrtc_aec \
-    libwebrtc_aecm
+# These defines will apply to all source files
+# Think again before changing it
+MY_WEBRTC_COMMON_DEFS := \
+    '-DWEBRTC_TARGET_PC' \
+    '-DWEBRTC_LINUX' \
+    '-DWEBRTC_THREAD_RR' \
+    '-DWEBRTC_CLOCK_TYPE_REALTIME' \
+    '-DWEBRTC_ANDROID'
+#    The following macros are used by modules,
+#    we might need to re-organize them
+#    '-DWEBRTC_ANDROID_OPENSLES' [module audio_device]
+#    '-DNETEQ_VOICEENGINE_CODECS' [module audio_coding neteq]
+#    '-DWEBRTC_MODULE_UTILITY_VIDEO' [module media_file] [module utility]
+ifeq ($(TARGET_ARCH),arm)
+MY_WEBRTC_COMMON_DEFS += \
+    '-DWEBRTC_ARCH_ARM'
+#    '-DWEBRTC_DETECT_ARM_NEON' # only used in a build configuration without Neon
+# TODO(kma): figure out if the above define could be moved to NDK build only.
 
-LOCAL_PATH := $(call my-dir)
+# TODO(kma): test if the code under next two macros works with generic GCC compilers
+ifeq ($(ARCH_ARM_HAVE_NEON),true)
+MY_WEBRTC_COMMON_DEFS += \
+    '-DWEBRTC_ARCH_ARM_NEON'
+MY_ARM_CFLAGS_NEON := \
+    -flax-vector-conversions
+endif
 
-include $(CLEAR_VARS)
+ifneq (,$(filter '-DWEBRTC_DETECT_ARM_NEON' '-DWEBRTC_ARCH_ARM_NEON', \
+    $(MY_WEBRTC_COMMON_DEFS)))
+WEBRTC_BUILD_NEON_LIBS := true
+endif
 
-LOCAL_ARM_MODE := arm
-LOCAL_MODULE := libwebrtc_audio_preprocessing
-LOCAL_MODULE_TAGS := optional
-LOCAL_LDFLAGS :=
+ifeq ($(ARCH_ARM_HAVE_ARMV7A),true)
+MY_WEBRTC_COMMON_DEFS += \
+    '-DWEBRTC_ARCH_ARM_V7A'
+endif
 
-LOCAL_WHOLE_STATIC_LIBRARIES := \
-    $(MY_APM_WHOLE_STATIC_LIBRARIES) \
-    libwebrtc_system_wrappers \
-
-LOCAL_SHARED_LIBRARIES := \
-    libcutils \
-    libdl \
-    libstlport
-
-LOCAL_ADDITIONAL_DEPENDENCIES :=
-
-include external/stlport/libstlport.mk
-include $(BUILD_SHARED_LIBRARY)
-
-###
-
-#LOCAL_PATH := $(call my-dir)
-#
-#include $(CLEAR_VARS)
-#
-#LOCAL_ARM_MODE := arm
-#LOCAL_MODULE := libwebrtc
-#LOCAL_MODULE_TAGS := optional
-#LOCAL_LDFLAGS :=
-#
-#LOCAL_WHOLE_STATIC_LIBRARIES := \
-#    libwebrtc_system_wrappers \
-#    libwebrtc_audio_device \
-#    libwebrtc_pcm16b \
-#    libwebrtc_cng \
-#    libwebrtc_audio_coding \
-#    libwebrtc_rtp_rtcp \
-#    libwebrtc_media_file \
-#    libwebrtc_udp_transport \
-#    libwebrtc_utility \
-#    libwebrtc_neteq \
-#    libwebrtc_audio_conference_mixer \
-#    libwebrtc_isac \
-#    libwebrtc_ilbc \
-#    libwebrtc_isacfix \
-#    libwebrtc_g722 \
-#    libwebrtc_g711 \
-#    libwebrtc_voe_core \
-#    libwebrtc_video_render \
-#    libwebrtc_video_capture \
-#    libwebrtc_i420 \
-#    libwebrtc_video_coding \
-#    libwebrtc_video_processing \
-#    libwebrtc_vp8 \
-#    libwebrtc_vie_core \
-#    libwebrtc_vplib \
-#    libwebrtc_jpeg \
-#    libwebrtc_vpx
-#
-#LOCAL_STATIC_LIBRARIES :=
-#LOCAL_SHARED_LIBRARIES := \
-#    libcutils \
-#    libdl \
-#    libstlport \
-#    libjpeg \
-#    libGLESv2 \
-#    libOpenSLES \
-#    libwebrtc_audio_preprocessing
-#
-#LOCAL_ADDITIONAL_DEPENDENCIES :=
-#
-#include external/stlport/libstlport.mk
-#include $(BUILD_SHARED_LIBRARY)
+else ifeq ($(TARGET_ARCH),x86)
+MY_WEBRTC_COMMON_DEFS += \
+    '-DWEBRTC_USE_SSE2'
+endif

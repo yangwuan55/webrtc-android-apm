@@ -8,23 +8,60 @@
 
 MY_WEBRTC_ROOT_PATH := $(call my-dir)
 
-
+# voice
+include $(MY_WEBRTC_ROOT_PATH)/src/common_audio/resampler/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/common_audio/signal_processing/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/common_audio/vad/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/aec/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/aecm/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/agc/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/ns/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/utility/Android.mk
+#include $(MY_WEBRTC_ROOT_PATH)/src/modules/utility/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/system_wrappers/source/Android.mk
 
-# audio processing
-include $(MY_WEBRTC_ROOT_PATH)/src/common_audio/resampler/main/source/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/common_audio/signal_processing_library/main/source/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/common_audio/vad/main/source/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/aec/main/source/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/aecm/main/source/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/agc/main/source/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/main/source/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/ns/main/source/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/utility/Android.mk
-
-
 # build .so
-include $(MY_WEBRTC_ROOT_PATH)/android-webrtc.mk
+LOCAL_PATH := $(call my-dir)
 
-# build test apps
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/main/test/process_test/Android.mk
+include $(CLEAR_VARS)
+include $(LOCAL_PATH)/../../external/webrtc/android-webrtc.mk
+
+LOCAL_ARM_MODE := arm
+LOCAL_MODULE := libwebrtc_audio_preprocessing
+LOCAL_MODULE_TAGS := optional
+
+LOCAL_WHOLE_STATIC_LIBRARIES := \
+    libwebrtc_spl \
+    libwebrtc_resampler \
+    libwebrtc_apm \
+    libwebrtc_apm_utility \
+    libwebrtc_vad \
+    libwebrtc_ns \
+    libwebrtc_agc \
+    libwebrtc_aec \
+    libwebrtc_aecm \
+    libwebrtc_system_wrappers
+
+# Add Neon libraries.
+ifeq ($(WEBRTC_BUILD_NEON_LIBS),true)
+LOCAL_WHOLE_STATIC_LIBRARIES += \
+    libwebrtc_aecm_neon \
+    libwebrtc_ns_neon
+endif
+
+LOCAL_STATIC_LIBRARIES := \
+    libprotobuf-cpp-2.3.0-lite
+
+LOCAL_SHARED_LIBRARIES := \
+    libcutils \
+    libdl \
+    libstlport
+
+LOCAL_PRELINK_MODULE := false
+
+ifndef NDK_ROOT
+include external/stlport/libstlport.mk
+endif
+include $(BUILD_SHARED_LIBRARY)
+

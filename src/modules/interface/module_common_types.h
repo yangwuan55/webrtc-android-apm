@@ -27,6 +27,11 @@ struct RTPHeader
     WebRtc_UWord16 headerLength;
 };
 
+struct RTPHeaderExtension
+{
+    WebRtc_Word32  transmissionTimeOffset;
+};
+
 struct RTPAudioHeader
 {
     WebRtc_UWord8  numEnergy;                         // number of valid entries in arrOfEnergy
@@ -37,18 +42,48 @@ struct RTPAudioHeader
 
 struct RTPVideoHeaderH263
 {
+    void InitRTPVideoHeaderH263() {};
     bool independentlyDecodable;  // H.263-1998 if no P bit it's not independently decodable
     bool bits;                    // H.263 mode B, Xor the lasy byte of previus packet with the
                                   // first byte of this packet
 };
+
 enum {kNoPictureId = -1};
+enum {kNoTl0PicIdx = -1};
+enum {kNoTemporalIdx = -1};
+enum {kNoKeyIdx = -1};
+enum {kNoSimulcastIdx = 0};
+
 struct RTPVideoHeaderVP8
 {
-    bool           startBit;        // Start of partition.
-    bool           stopBit;         // Stop of partition.
-    WebRtc_Word16  pictureId;       // Picture ID index, 15 bits;
-                                    // kNoPictureId if PictureID does not exist.
-    bool           nonReference;    // Frame is discardable.
+    void InitRTPVideoHeaderVP8()
+    {
+        nonReference = false;
+        pictureId = kNoPictureId;
+        tl0PicIdx = kNoTl0PicIdx;
+        temporalIdx = kNoTemporalIdx;
+        layerSync = false;
+        keyIdx = kNoKeyIdx;
+        partitionId = 0;
+        beginningOfPartition = false;
+        frameWidth = 0;
+        frameHeight = 0;
+    }
+
+    bool           nonReference;   // Frame is discardable.
+    WebRtc_Word16  pictureId;      // Picture ID index, 15 bits;
+                                   // kNoPictureId if PictureID does not exist.
+    WebRtc_Word16  tl0PicIdx;      // TL0PIC_IDX, 8 bits;
+                                   // kNoTl0PicIdx means no value provided.
+    WebRtc_Word8   temporalIdx;    // Temporal layer index, or kNoTemporalIdx.
+    bool           layerSync;      // This frame is a layer sync frame.
+                                   // Disabled if temporalIdx == kNoTemporalIdx.
+    int            keyIdx;         // 5 bits; kNoKeyIdx means not used.
+    int            partitionId;    // VP8 partition ID
+    bool           beginningOfPartition;  // True if this packet is the first
+                                          // in a VP8 partition. Otherwise false
+    int            frameWidth;     // Exists for key frames.
+    int            frameHeight;    // Exists for key frames.
 };
 union RTPVideoTypeHeader
 {
@@ -72,6 +107,8 @@ struct RTPVideoHeader
     WebRtc_UWord16          height;
 
     bool                    isFirstPacket;   // first packet in frame
+    WebRtc_UWord8           simulcastIdx;    // Index if the simulcast encoder creating
+                                             // this frame, 0 if not using simulcast.
     RTPVideoCodecTypes      codec;
     RTPVideoTypeHeader      codecHeader;
 };
@@ -86,6 +123,7 @@ struct WebRtcRTPHeader
     RTPHeader       header;
     FrameType       frameType;
     RTPTypeHeader   type;
+    RTPHeaderExtension extension;
 };
 
 class RTPFragmentationHeader
@@ -360,11 +398,11 @@ public:
 struct VideoContentMetrics
 {
     VideoContentMetrics(): motionMagnitudeNZ(0), sizeZeroMotion(0), spatialPredErr(0),
-            spatialPredErrH(0), spatialPredErrV(0), motionPredErr(0), 
+            spatialPredErrH(0), spatialPredErrV(0), motionPredErr(0),
             motionHorizontalness(0), motionClusterDistortion(0),
             nativeWidth(0), nativeHeight(0), contentChange(false) {   }
     void Reset(){ motionMagnitudeNZ = 0; sizeZeroMotion = 0; spatialPredErr = 0;
-            spatialPredErrH = 0; spatialPredErrV = 0; motionPredErr = 0; 
+            spatialPredErrH = 0; spatialPredErrV = 0; motionPredErr = 0;
             motionHorizontalness = 0; motionClusterDistortion = 0;
             nativeWidth = 0; nativeHeight = 0; contentChange = false; }
 
@@ -697,7 +735,7 @@ public:
         const WebRtc_UWord32 timeStamp,
         const WebRtc_Word16* payloadData,
         const WebRtc_UWord16 payloadDataLengthInSamples,
-        const WebRtc_UWord32 frequencyInHz,
+        const int frequencyInHz,
         const SpeechType     speechType,
         const VADActivity    vadActivity,
         const WebRtc_UWord8  audioChannel = 1,
@@ -719,7 +757,7 @@ public:
     // Supporting Stereo, stereo samples are interleaved
     mutable WebRtc_Word16 _payloadData[kMaxAudioFrameSizeSamples];
     WebRtc_UWord16 _payloadDataLengthInSamples;
-    WebRtc_UWord32 _frequencyInHz;
+    int _frequencyInHz;
     WebRtc_UWord8  _audioChannel;
     SpeechType   _speechType;
     VADActivity  _vadActivity;
@@ -756,7 +794,7 @@ AudioFrame::UpdateFrame(
     const WebRtc_UWord32 timeStamp,
     const WebRtc_Word16* payloadData,
     const WebRtc_UWord16 payloadDataLengthInSamples,
-    const WebRtc_UWord32 frequencyInHz,
+    const int frequencyInHz,
     const SpeechType     speechType,
     const VADActivity    vadActivity,
     const WebRtc_UWord8  audioChannel,

@@ -251,6 +251,8 @@ struct NetworkStatistics           // NETEQ statistics
     WebRtc_UWord16 currentBufferSize;
     // preferred (optimal) buffer size in ms
     WebRtc_UWord16 preferredBufferSize;
+    // adding extra delay due to "peaky jitter"
+    bool jitterPeaksFound;
     // loss rate (network + late) in percent (in Q14)
     WebRtc_UWord16 currentPacketLossRate;
     // late loss rate in percent (in Q14)
@@ -263,58 +265,14 @@ struct NetworkStatistics           // NETEQ statistics
     WebRtc_UWord16 currentPreemptiveRate;
     // fraction of data removed through acceleration (in Q14)
     WebRtc_UWord16 currentAccelerateRate;
-};
-
-struct JitterStatistics
-{
-    // smallest Jitter Buffer size during call in ms
-    WebRtc_UWord32 jbMinSize;
-    // largest Jitter Buffer size during call in ms
-    WebRtc_UWord32 jbMaxSize;
-    // the average JB size, measured over time - ms
-    WebRtc_UWord32 jbAvgSize;
-    // number of times the Jitter Buffer changed (using Accelerate or
-    // Pre-emptive Expand)
-    WebRtc_UWord32 jbChangeCount;
-    // amount (in ms) of audio data received late
-    WebRtc_UWord32 lateLossMs;
-    // milliseconds removed to reduce jitter buffer size
-    WebRtc_UWord32 accelerateMs;
-    // milliseconds discarded through buffer flushing
-    WebRtc_UWord32 flushedMs;
-    // milliseconds of generated silence
-    WebRtc_UWord32 generatedSilentMs;
-    // milliseconds of synthetic audio data (non-background noise)
-    WebRtc_UWord32 interpolatedVoiceMs;
-    // milliseconds of synthetic audio data (background noise level)
-    WebRtc_UWord32 interpolatedSilentMs;
-    // count of tiny expansions in output audio
-    WebRtc_UWord32 countExpandMoreThan120ms;
-    // count of small expansions in output audio
-    WebRtc_UWord32 countExpandMoreThan250ms;
-    // count of medium expansions in output audio
-    WebRtc_UWord32 countExpandMoreThan500ms;
-    // count of long expansions in output audio
-    WebRtc_UWord32 countExpandMoreThan2000ms;
-    // duration of longest audio drop-out
-    WebRtc_UWord32 longestExpandDurationMs;
-    // count of times we got small network outage (inter-arrival time in
-    // [500, 1000) ms)
-    WebRtc_UWord32 countIAT500ms;
-    // count of times we got medium network outage (inter-arrival time in
-    // [1000, 2000) ms)
-    WebRtc_UWord32 countIAT1000ms;
-    // count of times we got large network outage (inter-arrival time >=
-    // 2000 ms)
-    WebRtc_UWord32 countIAT2000ms;
-    // longest packet inter-arrival time in ms
-    WebRtc_UWord32 longestIATms;
-    // min time incoming Packet "waited" to be played
-    WebRtc_UWord32 minPacketDelayMs;
-    // max time incoming Packet "waited" to be played
-    WebRtc_UWord32 maxPacketDelayMs;
-    // avg time incoming Packet "waited" to be played
-    WebRtc_UWord32 avgPacketDelayMs;
+    // clock-drift in parts-per-million (negative or positive)
+    int32_t clockDriftPPM;
+    // average packet waiting time in the jitter buffer (ms)
+    int meanWaitingTimeMs;
+    // median packet waiting time in the jitter buffer (ms)
+    int medianWaitingTimeMs;
+    // max packet waiting time in the jitter buffer (ms)
+    int maxWaitingTimeMs;
 };
 
 typedef struct
@@ -479,12 +437,15 @@ enum RawVideoType
     kVideoMJPEG    = 10,
     kVideoNV12     = 11,
     kVideoNV21     = 12,
+    kVideoBGRA     = 13,
     kVideoUnknown  = 99
 };
 
 // Video codec
 enum { kConfigParameterSize = 128};
 enum { kPayloadNameSize = 32};
+enum { kMaxSimulcastStreams = 4};
+enum { kMaxTemporalStreams = 4};
 
 // H.263 specific
 struct VideoCodecH263
@@ -513,6 +474,17 @@ enum VideoCodecProfile
     kProfileMain = 0x01
 };
 
+enum VP8ResilienceMode {
+  kResilienceOff,    // The stream produced by the encoder requires a
+                     // recovery frame (typically a key frame) to be
+                     // decodable after a packet loss.
+  kResilientStream,  // A stream produced by the encoder is resilient to
+                     // packet losses, but packets within a frame subsequent
+                     // to a loss can't be decoded.
+  kResilientFrames   // Same as kResilientStream but with added resilience
+                     // within a frame.
+};
+
 struct VideoCodecH264
 {
     H264Packetization          packetization;
@@ -530,9 +502,11 @@ struct VideoCodecH264
 // VP8 specific
 struct VideoCodecVP8
 {
-    bool                       pictureLossIndicationOn;
-    bool                       feedbackModeOn;
-    VideoCodecComplexity       complexity;
+    bool                 pictureLossIndicationOn;
+    bool                 feedbackModeOn;
+    VideoCodecComplexity complexity;
+    VP8ResilienceMode    resilience;
+    unsigned char        numberOfTemporalLayers;
 };
 
 // MPEG-4 specific
@@ -570,6 +544,19 @@ union VideoCodecUnion
     VideoCodecGeneric   Generic;
 };
 
+/*
+*  Simulcast is when the same stream is encoded multiple times with different
+*  settings such as resolution.  
+*/
+struct SimulcastStream
+{
+    unsigned short      width;
+    unsigned short      height;
+    unsigned char       numberOfTemporalLayers;
+    unsigned int        maxBitrate;
+    unsigned int        qpMax; // minimum quality
+};
+
 // Common video codec properties
 struct VideoCodec
 {
@@ -588,8 +575,8 @@ struct VideoCodec
     VideoCodecUnion     codecSpecific;
 
     unsigned int        qpMax;
+    unsigned char       numberOfSimulcastStreams;
+    SimulcastStream     simulcastStream[kMaxSimulcastStreams];
 };
-
 }  // namespace webrtc
-
 #endif  // WEBRTC_COMMON_TYPES_H

@@ -10,9 +10,9 @@
 
 #if defined(_WIN32)
     #include <windows.h>
-    #include "critical_section_windows.h"
+    #include "critical_section_win.h"
 #else
-    #include "critical_section_linux.h"
+    #include "critical_section_posix.h"
 #endif
 
 namespace webrtc {
@@ -21,7 +21,7 @@ CriticalSectionWrapper* CriticalSectionWrapper::CreateCriticalSection()
 #ifdef _WIN32
     return new CriticalSectionWindows();
 #else
-    return new CriticalSectionLinux();
+    return new CriticalSectionPosix();
 #endif
 }
 } // namespace webrtc
