@@ -44,7 +44,6 @@ LOCAL_SRC_FILES := \
     resample_by_2_internal.c \
     resample_fractional.c \
     spl_sqrt.c \
-    spl_sqrt_floor.c \
     spl_version.c \
     splitting_filter.c \
     sqrt_of_one_minus_x_squared.c \
@@ -63,6 +62,14 @@ LOCAL_SRC_FILES += \
     min_max_operations_neon.c
 LOCAL_CFLAGS += \
     $(MY_ARM_CFLAGS_NEON)
+endif
+
+ifeq ($(TARGET_ARCH),arm)
+LOCAL_SRC_FILES += \
+    spl_sqrt_floor.s
+else
+LOCAL_SRC_FILES += \
+    spl_sqrt_floor.c
 endif
 
 LOCAL_SHARED_LIBRARIES := libstlport
