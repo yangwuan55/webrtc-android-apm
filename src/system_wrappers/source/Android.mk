@@ -1,4 +1,4 @@
-# Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+# Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
 #
 # Use of this source code is governed by a BSD-style license
 # that can be found in the LICENSE file in the root of the source
@@ -17,15 +17,15 @@ LOCAL_MODULE := libwebrtc_system_wrappers
 LOCAL_MODULE_TAGS := optional
 LOCAL_CPP_EXTENSION := .cc
 LOCAL_SRC_FILES := \
+    android/cpu-features.c \
+    cpu_features_android.c \
     map.cc \
-    rw_lock_generic.cc \
     sort.cc \
     aligned_malloc.cc \
-    atomic32.cc \
+    atomic32_posix.cc \
     condition_variable.cc \
     cpu_no_op.cc \
     cpu_features.cc \
-    cpu_features_arm.c \
     cpu_info.cc \
     critical_section.cc \
     event.cc \
@@ -38,6 +38,7 @@ LOCAL_SRC_FILES := \
     cpu_linux.cc \
     critical_section_posix.cc \
     event_posix.cc \
+    sleep.cc \
     thread_posix.cc \
     trace_posix.cc \
     rw_lock_posix.cc 

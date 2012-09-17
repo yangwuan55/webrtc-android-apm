@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+ *  Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
@@ -17,17 +17,16 @@
 #include "trace_win.h"
 #else
 #include <stdio.h>
-#include <time.h>
 #include <stdarg.h>
 #include "trace_posix.h"
 #endif // _WIN32
 
+#include "system_wrappers/interface/sleep.h"
+
 #define KEY_LEN_CHARS 31
 
 #ifdef _WIN32
-    #pragma warning(disable:4355)
-// VS 2005: Disable warnings for default initialized arrays.
-    #pragma warning(disable:4351)
+#pragma warning(disable:4355)
 #endif // _WIN32
 
 namespace webrtc {
@@ -94,7 +93,7 @@ TraceImpl::TraceImpl()
         for(int n = 0; n < WEBRTC_TRACE_MAX_QUEUE; n++)
         {
             _messageQueue[m][n] = new
-                WebRtc_Word8[WEBRTC_TRACE_MAX_MESSAGE_SIZE];
+                char[WEBRTC_TRACE_MAX_MESSAGE_SIZE];
         }
     }
 }
@@ -108,14 +107,7 @@ bool TraceImpl::StopThread()
     // TODO (hellner): why not use condition variables to do this? Or let the
     //                 worker thread die and let this thread flush remaining
     //                 messages?
-#ifdef _WIN32
-    Sleep(10);
-#else
-    timespec t;
-    t.tv_sec = 0;
-    t.tv_nsec = 10*1000000;
-    nanosleep(&t,NULL);
-#endif
+    SleepMs(10);
 
     _thread.SetNotAlive();
     // Make sure the thread finishes as quickly as possible (instead of having
@@ -145,6 +137,12 @@ TraceImpl::~TraceImpl()
             delete [] _messageQueue[m][n];
         }
     }
+}
+
+WebRtc_Word32 TraceImpl::AddThreadId(char* traceMessage) const {
+  WebRtc_UWord32 threadId = ThreadWrapper::GetThreadId();
+  // Messages is 12 characters.
+  return sprintf(traceMessage, "%10u; ", threadId);
 }
 
 WebRtc_Word32 TraceImpl::AddLevel(char* szMessage, const TraceLevel level) const
@@ -277,9 +275,6 @@ WebRtc_Word32 TraceImpl::AddModuleAndId(char* traceMessage,
                 sprintf(traceMessage, "  VIDEO PROC:%5ld %5ld;", idEngine,
                         idChannel);
                 break;
-            default:
-                assert(false);
-                return 0;
         }
     } else {
         switch (module)
@@ -335,16 +330,13 @@ WebRtc_Word32 TraceImpl::AddModuleAndId(char* traceMessage,
             case kTraceVideoPreocessing:
                 sprintf (traceMessage, "  VIDEO PROC:%11ld;", idl);
                 break;
-            default:
-                assert(false);
-                return 0;
         }
     }
     // All messages are 25 characters.
     return 25;
 }
 
-WebRtc_Word32 TraceImpl::SetTraceFileImpl(const WebRtc_Word8* fileNameUTF8,
+WebRtc_Word32 TraceImpl::SetTraceFileImpl(const char* fileNameUTF8,
                                           const bool addFileCounter)
 {
     CriticalSectionScoped lock(_critsectInterface);
@@ -358,7 +350,7 @@ WebRtc_Word32 TraceImpl::SetTraceFileImpl(const WebRtc_Word8* fileNameUTF8,
         {
             _fileCountText = 1;
 
-            WebRtc_Word8 fileNameWithCounterUTF8[FileWrapper::kMaxFileNameSize];
+            char fileNameWithCounterUTF8[FileWrapper::kMaxFileNameSize];
             CreateFileName(fileNameUTF8, fileNameWithCounterUTF8,
                            _fileCountText);
             if(_traceFile.OpenFile(fileNameWithCounterUTF8, false, false,
@@ -379,7 +371,7 @@ WebRtc_Word32 TraceImpl::SetTraceFileImpl(const WebRtc_Word8* fileNameUTF8,
 }
 
 WebRtc_Word32 TraceImpl::TraceFileImpl(
-    WebRtc_Word8 fileNameUTF8[FileWrapper::kMaxFileNameSize])
+    char fileNameUTF8[FileWrapper::kMaxFileNameSize])
 {
     CriticalSectionScoped lock(_critsectInterface);
     return _traceFile.FileName(fileNameUTF8, FileWrapper::kMaxFileNameSize);
@@ -429,8 +421,14 @@ WebRtc_Word32 TraceImpl::AddMessage(
 void TraceImpl::AddMessageToList(
     const char traceMessage[WEBRTC_TRACE_MAX_MESSAGE_SIZE],
     const WebRtc_UWord16 length,
-    const TraceLevel level)
-{
+    const TraceLevel level) {
+#ifdef WEBRTC_DIRECT_TRACE
+    if (_callback) {
+      _callback->Print(level, traceMessage, length);
+    }
+    return;
+#endif
+
     CriticalSectionScoped lock(_critsectArray);
 
     if(_nextFreeIdx[_activeQueue] >= WEBRTC_TRACE_MAX_QUEUE)
@@ -550,8 +548,8 @@ void TraceImpl::WriteToFile()
                     _traceFile.Rewind();
                 } else
                 {
-                    WebRtc_Word8 oldFileName[FileWrapper::kMaxFileNameSize];
-                    WebRtc_Word8 newFileName[FileWrapper::kMaxFileNameSize];
+                    char oldFileName[FileWrapper::kMaxFileNameSize];
+                    char newFileName[FileWrapper::kMaxFileNameSize];
 
                     // get current name
                     _traceFile.FileName(oldFileName,
@@ -571,7 +569,7 @@ void TraceImpl::WriteToFile()
             }
             if(_rowCountText ==  0)
             {
-                WebRtc_Word8 message[WEBRTC_TRACE_MAX_MESSAGE_SIZE + 1];
+                char message[WEBRTC_TRACE_MAX_MESSAGE_SIZE + 1];
                 WebRtc_Word32 length = AddDateTimeInfo(message);
                 if(length != -1)
                 {
@@ -637,7 +635,7 @@ void TraceImpl::AddImpl(const TraceLevel level, const TraceModule module,
         ackLen += len;
 
         len = AddThreadId(meassagePtr);
-        if(len == -1)
+        if(len < 0)
         {
             return;
         }
@@ -663,8 +661,8 @@ bool TraceImpl::TraceCheck(const TraceLevel level) const
 }
 
 bool TraceImpl::UpdateFileName(
-    const WebRtc_Word8 fileNameUTF8[FileWrapper::kMaxFileNameSize],
-    WebRtc_Word8 fileNameWithCounterUTF8[FileWrapper::kMaxFileNameSize],
+    const char fileNameUTF8[FileWrapper::kMaxFileNameSize],
+    char fileNameWithCounterUTF8[FileWrapper::kMaxFileNameSize],
     const WebRtc_UWord32 newCount) const
 {
     WebRtc_Word32 length = (WebRtc_Word32)strlen(fileNameUTF8);
@@ -706,8 +704,8 @@ bool TraceImpl::UpdateFileName(
 }
 
 bool TraceImpl::CreateFileName(
-    const WebRtc_Word8 fileNameUTF8[FileWrapper::kMaxFileNameSize],
-    WebRtc_Word8 fileNameWithCounterUTF8[FileWrapper::kMaxFileNameSize],
+    const char fileNameUTF8[FileWrapper::kMaxFileNameSize],
+    char fileNameWithCounterUTF8[FileWrapper::kMaxFileNameSize],
     const WebRtc_UWord32 newCount) const
 {
     WebRtc_Word32 length = (WebRtc_Word32)strlen(fileNameUTF8);
@@ -760,7 +758,7 @@ WebRtc_Word32 Trace::LevelFilter(WebRtc_UWord32& filter)
     return 0;
 }
 
-WebRtc_Word32 Trace::TraceFile(WebRtc_Word8 fileName[FileWrapper::kMaxFileNameSize])
+WebRtc_Word32 Trace::TraceFile(char fileName[FileWrapper::kMaxFileNameSize])
 {
     TraceImpl* trace = TraceImpl::GetTrace();
     if(trace)
@@ -772,7 +770,7 @@ WebRtc_Word32 Trace::TraceFile(WebRtc_Word8 fileName[FileWrapper::kMaxFileNameSi
     return -1;
 }
 
-WebRtc_Word32 Trace::SetTraceFile(const WebRtc_Word8* fileName,
+WebRtc_Word32 Trace::SetTraceFile(const char* fileName,
                                   const bool addFileCounter)
 {
     TraceImpl* trace = TraceImpl::GetTrace();

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+ *  Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
@@ -15,6 +15,8 @@
 #include <pthread.h>
 
 namespace webrtc {
+
+class CriticalSectionWrapper;
 class EventWrapper;
 
 class ThreadPosix : public ThreadWrapper
@@ -47,6 +49,7 @@ private:
     ThreadObj           _obj;
 
     // internal state
+    CriticalSectionWrapper* _crit_state;  // Protects _alive and _dead
     bool                    _alive;
     bool                    _dead;
     ThreadPriority          _prio;
@@ -57,12 +60,11 @@ private:
     bool                    _setThreadName;
 
     // handle to thread
+#if (defined(WEBRTC_LINUX) || defined(WEBRTC_ANDROID))
+    pid_t                   _pid;
+#endif
     pthread_attr_t          _attr;
     pthread_t               _thread;
-#ifdef WEBRTC_LINUX
-    pid_t                   _linuxPid;
-#endif
-
 };
 } // namespace webrtc
 
