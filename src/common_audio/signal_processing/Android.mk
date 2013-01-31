@@ -55,7 +55,7 @@ LOCAL_CFLAGS := \
 
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/include \
-    $(LOCAL_PATH)/../.. 
+    $(LOCAL_PATH)/../..
 
 ifeq ($(ARCH_ARM_HAVE_NEON),true)
 LOCAL_SRC_FILES += \
@@ -72,8 +72,6 @@ LOCAL_SRC_FILES += \
     spl_sqrt_floor.c
 endif
 
-LOCAL_SHARED_LIBRARIES := libstlport
-
 ifeq ($(TARGET_OS)-$(TARGET_SIMULATOR),linux-true)
 LOCAL_LDLIBS += -ldl -lpthread
 endif
@@ -83,6 +81,16 @@ LOCAL_SHARED_LIBRARIES += libdl
 endif
 
 ifndef NDK_ROOT
+ifndef WEBRTC_STL
+LOCAL_SHARED_LIBRARIES += libstlport
 include external/stlport/libstlport.mk
+else
+LOCAL_NDK_STL_VARIANT := $(WEBRTC_STL)
+LOCAL_SDK_VERSION := 14
+LOCAL_MODULE := $(LOCAL_MODULE)_$(WEBRTC_STL)
 endif
+else
+LOCAL_SHARED_LIBRARIES += libstlport
+endif
+
 include $(BUILD_STATIC_LIBRARY)
