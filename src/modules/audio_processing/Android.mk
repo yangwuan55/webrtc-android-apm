@@ -52,12 +52,20 @@ LOCAL_C_INCLUDES := \
 
 LOCAL_SHARED_LIBRARIES := \
     libcutils \
-    libdl \
-    libstlport
+    libdl
 
 ifndef NDK_ROOT
+ifndef WEBRTC_STL
 include external/stlport/libstlport.mk
+else
+LOCAL_NDK_STL_VARIANT := $(WEBRTC_STL)
+LOCAL_SDK_VERSION := 14
+LOCAL_MODULE := $(LOCAL_MODULE)_$(WEBRTC_STL)
 endif
+else
+LOCAL_SHARED_LIBRARIES += libstlport
+endif
+
 include $(BUILD_STATIC_LIBRARY)
 
 # apm process test app
@@ -85,17 +93,28 @@ LOCAL_STATIC_LIBRARIES := \
     libgtest \
     libprotobuf-cpp-2.3.0-lite
 
+MY_LIB_SUFFIX :=
+ifdef WEBRTC_STL
+MY_LIB_SUFFIX := _$(WEBRTC_STL)
+endif
+
 LOCAL_SHARED_LIBRARIES := \
     libutils \
-    libstlport \
-    libwebrtc_audio_preprocessing
+    libwebrtc_audio_preprocessing$(MY_LIB_SUFFIX)
 
 LOCAL_MODULE:= webrtc_apm_process_test
 
 ifdef NDK_ROOT
+LOCAL_SHARED_LIBRARIES += libstlport
 include $(BUILD_EXECUTABLE)
 else
+ifndef WEBRTC_STL
 include external/stlport/libstlport.mk
+else
+LOCAL_NDK_STL_VARIANT := $(WEBRTC_STL)
+LOCAL_SDK_VERSION := 14
+LOCAL_MODULE := $(LOCAL_MODULE)_$(WEBRTC_STL)
+endif
 include $(BUILD_NATIVE_TEST)
 endif
 
@@ -129,15 +148,26 @@ LOCAL_STATIC_LIBRARIES := \
     libgtest \
     libprotobuf-cpp-2.3.0-lite
 
+MY_LIB_SUFFIX :=
+ifdef WEBRTC_STL
+MY_LIB_SUFFIX := _$(WEBRTC_STL)
+endif
+
 LOCAL_SHARED_LIBRARIES := \
-    libstlport \
-    libwebrtc_audio_preprocessing
+    libwebrtc_audio_preprocessing$(MY_LIB_SUFFIX)
 
 LOCAL_MODULE:= webrtc_apm_unit_test
 
 ifdef NDK_ROOT
+LOCAL_SHARED_LIBRARIES += libstlport
 include $(BUILD_EXECUTABLE)
 else
+ifndef WEBRTC_STL
 include external/stlport/libstlport.mk
+else
+LOCAL_NDK_STL_VARIANT := $(WEBRTC_STL)
+LOCAL_SDK_VERSION := 14
+LOCAL_MODULE := $(LOCAL_MODULE)_$(WEBRTC_STL)
+endif
 include $(BUILD_NATIVE_TEST)
 endif

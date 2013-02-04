@@ -69,12 +69,21 @@ LOCAL_STATIC_LIBRARIES += libwebrtc_system_wrappers
 
 LOCAL_SHARED_LIBRARIES := \
     libcutils \
-    libdl \
-    libstlport
+    libdl
 
 ifndef NDK_ROOT
+ifndef WEBRTC_STL
+LOCAL_SHARED_LIBRARIES += libstlport
 include external/stlport/libstlport.mk
+else
+LOCAL_NDK_STL_VARIANT := $(WEBRTC_STL)
+LOCAL_SDK_VERSION := 14
+LOCAL_MODULE := $(LOCAL_MODULE)_$(WEBRTC_STL)
 endif
+else
+LOCAL_SHARED_LIBRARIES += libstlport
+endif
+
 include $(BUILD_STATIC_LIBRARY)
 
 #########################
@@ -104,10 +113,19 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../../../../../.. \
     $(LOCAL_PATH)/../../../../../../common_audio/signal_processing/include
 
-
 ifndef NDK_ROOT
+ifndef WEBRTC_STL
+LOCAL_SHARED_LIBRARIES += libstlport
 include external/stlport/libstlport.mk
+else
+LOCAL_NDK_STL_VARIANT := $(WEBRTC_STL)
+LOCAL_SDK_VERSION := 14
+LOCAL_MODULE := $(LOCAL_MODULE)_$(WEBRTC_STL)
 endif
+else
+LOCAL_SHARED_LIBRARIES += libstlport
+endif
+
 include $(BUILD_STATIC_LIBRARY)
 
 endif # ifeq ($(WEBRTC_BUILD_NEON_LIBS),true)
@@ -128,14 +146,19 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../interface \
     $(LOCAL_PATH)/../../../../../..
 
+MY_LIB_SUFFIX :=
+ifdef WEBRTC_STL
+MY_LIB_SUFFIX := _$(WEBRTC_STL)
+endif
+
 LOCAL_STATIC_LIBRARIES := \
-    libwebrtc_isacfix \
-    libwebrtc_spl \
-    libwebrtc_system_wrappers
+    libwebrtc_isacfix$(MY_LIB_SUFFIX) \
+    libwebrtc_spl$(MY_LIB_SUFFIX) \
+    libwebrtc_system_wrappers$(MY_LIB_SUFFIX)
 
 ifeq ($(WEBRTC_BUILD_NEON_LIBS),true)
 LOCAL_STATIC_LIBRARIES += \
-    libwebrtc_isacfix_neon
+    libwebrtc_isacfix_neon$(MY_LIB_SUFFIX)
 endif
 
 LOCAL_SHARED_LIBRARIES := \
@@ -146,5 +169,13 @@ LOCAL_MODULE:= webrtc_isac_test
 ifdef NDK_ROOT
 include $(BUILD_EXECUTABLE)
 else
+ifndef WEBRTC_STL
+LOCAL_SHARED_LIBRARIES += libstlport
+include external/stlport/libstlport.mk
+else
+LOCAL_NDK_STL_VARIANT := $(WEBRTC_STL)
+LOCAL_SDK_VERSION := 14
+LOCAL_MODULE := $(LOCAL_MODULE)_$(WEBRTC_STL)
+endif
 include $(BUILD_NATIVE_TEST)
 endif
