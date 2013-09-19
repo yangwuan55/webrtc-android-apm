@@ -72,14 +72,6 @@ LOCAL_SRC_FILES += \
     spl_sqrt_floor.c
 endif
 
-ifeq ($(TARGET_OS)-$(TARGET_SIMULATOR),linux-true)
-LOCAL_LDLIBS += -ldl -lpthread
-endif
-
-ifneq ($(TARGET_SIMULATOR),true)
-LOCAL_SHARED_LIBRARIES += libdl
-endif
-
 ifndef NDK_ROOT
 ifndef WEBRTC_STL
 LOCAL_SHARED_LIBRARIES += libstlport

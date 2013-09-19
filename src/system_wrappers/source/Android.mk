@@ -51,10 +51,6 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../interface \
     $(LOCAL_PATH)/spreadsortlib
 
-LOCAL_SHARED_LIBRARIES := \
-    libcutils \
-    libdl
-
 ifndef NDK_ROOT
 ifndef WEBRTC_STL
 LOCAL_SHARED_LIBRARIES += libstlport

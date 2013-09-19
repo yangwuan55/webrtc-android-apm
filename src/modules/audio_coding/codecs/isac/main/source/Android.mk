@@ -55,10 +55,6 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../../../../../.. \
     $(LOCAL_PATH)/../../../../../../common_audio/signal_processing/include
 
-LOCAL_SHARED_LIBRARIES := \
-    libcutils \
-    libdl
-
 ifndef NDK_ROOT
 ifndef WEBRTC_STL
 LOCAL_SHARED_LIBRARIES += libstlport
