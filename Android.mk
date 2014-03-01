@@ -6,35 +6,10 @@
 # in the file PATENTS.  All contributing project authors may
 # be found in the AUTHORS file in the root of the source tree.
 
-MY_WEBRTC_ROOT_PATH := $(call my-dir)
-
-# voice
-include $(MY_WEBRTC_ROOT_PATH)/src/common_audio/resampler/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/common_audio/signal_processing/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/common_audio/vad/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_coding/codecs/isac/fix/source/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_coding/codecs/isac/main/source/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/aec/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/aecm/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/agc/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/ns/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/utility/Android.mk
-#include $(MY_WEBRTC_ROOT_PATH)/src/modules/utility/source/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/system_wrappers/source/Android.mk
-
-# libwebrtc_audio_coding_gnustl_static dependencies
-WEBRTC_STL := gnustl_static
-include $(MY_WEBRTC_ROOT_PATH)/src/system_wrappers/source/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_coding/codecs/isac/main/source/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_coding/codecs/isac/fix/source/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/common_audio/signal_processing/Android.mk
-
-# build .so
 LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
-include $(LOCAL_PATH)/../../external/webrtc/android-webrtc.mk
+include $(LOCAL_PATH)/android-webrtc.mk
 
 LOCAL_ARM_MODE := arm
 LOCAL_MODULE := libwebrtc_audio_preprocessing
@@ -76,7 +51,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 
 include $(CLEAR_VARS)
-include $(LOCAL_PATH)/../../external/webrtc/android-webrtc.mk
+include $(LOCAL_PATH)/android-webrtc.mk
 
 LOCAL_ARM_MODE := arm
 LOCAL_MODULE := libwebrtc_audio_coding
@@ -108,7 +83,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 
 include $(CLEAR_VARS)
-include $(LOCAL_PATH)/../../external/webrtc/android-webrtc.mk
+include $(LOCAL_PATH)/android-webrtc.mk
 
 LOCAL_ARM_MODE := arm
 LOCAL_MODULE := libwebrtc_audio_coding_gnustl_static
@@ -136,3 +111,26 @@ LOCAL_NDK_STL_VARIANT := gnustl_static
 LOCAL_SDK_VERSION := 14
 
 include $(BUILD_STATIC_LIBRARY)
+
+webrtc_path := $(LOCAL_PATH)
+# voice
+include $(webrtc_path)/src/common_audio/resampler/Android.mk
+include $(webrtc_path)/src/common_audio/signal_processing/Android.mk
+include $(webrtc_path)/src/common_audio/vad/Android.mk
+include $(webrtc_path)/src/modules/audio_coding/codecs/isac/fix/source/Android.mk
+include $(webrtc_path)/src/modules/audio_coding/codecs/isac/main/source/Android.mk
+include $(webrtc_path)/src/modules/audio_processing/aec/Android.mk
+include $(webrtc_path)/src/modules/audio_processing/aecm/Android.mk
+include $(webrtc_path)/src/modules/audio_processing/agc/Android.mk
+include $(webrtc_path)/src/modules/audio_processing/Android.mk
+include $(webrtc_path)/src/modules/audio_processing/ns/Android.mk
+include $(webrtc_path)/src/modules/audio_processing/utility/Android.mk
+#include $(webrtc_path)/src/modules/utility/source/Android.mk
+include $(webrtc_path)/src/system_wrappers/source/Android.mk
+
+# libwebrtc_audio_coding_gnustl_static dependencies
+WEBRTC_STL := gnustl_static
+include $(webrtc_path)/src/system_wrappers/source/Android.mk
+include $(webrtc_path)/src/modules/audio_coding/codecs/isac/main/source/Android.mk
+include $(webrtc_path)/src/modules/audio_coding/codecs/isac/fix/source/Android.mk
+include $(webrtc_path)/src/common_audio/signal_processing/Android.mk
