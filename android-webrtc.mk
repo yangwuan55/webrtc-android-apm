@@ -19,15 +19,14 @@ MY_WEBRTC_COMMON_DEFS := \
 #    '-DWEBRTC_ANDROID_OPENSLES' [module audio_device]
 #    '-DNETEQ_VOICEENGINE_CODECS' [module audio_coding neteq]
 #    '-DWEBRTC_MODULE_UTILITY_VIDEO' [module media_file] [module utility]
-ifeq ($(TARGET_ARCH),arm)
-MY_WEBRTC_COMMON_DEFS += \
+MY_WEBRTC_COMMON_DEFS_arm := \
     '-DWEBRTC_ARCH_ARM'
 #    '-DWEBRTC_DETECT_ARM_NEON' # only used in a build configuration without Neon
 # TODO(kma): figure out if the above define could be moved to NDK build only.
 
 # TODO(kma): test if the code under next two macros works with generic GCC compilers
 ifeq ($(ARCH_ARM_HAVE_NEON),true)
-MY_WEBRTC_COMMON_DEFS += \
+MY_WEBRTC_COMMON_DEFS_arm += \
     '-DWEBRTC_ARCH_ARM_NEON'
 MY_ARM_CFLAGS_NEON := \
     -flax-vector-conversions
@@ -39,11 +38,9 @@ WEBRTC_BUILD_NEON_LIBS := true
 endif
 
 ifeq ($(ARCH_ARM_HAVE_ARMV7A),true)
-MY_WEBRTC_COMMON_DEFS += \
+MY_WEBRTC_COMMON_DEFS_arm += \
     '-DWEBRTC_ARCH_ARM_V7A'
 endif
 
-else ifeq ($(TARGET_ARCH),x86)
-MY_WEBRTC_COMMON_DEFS += \
+MY_WEBRTC_COMMON_DEFS_x86 := \
     '-DWEBRTC_USE_SSE2'
-endif

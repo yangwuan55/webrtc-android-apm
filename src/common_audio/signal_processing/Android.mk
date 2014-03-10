@@ -53,32 +53,34 @@ LOCAL_SRC_FILES := \
 LOCAL_CFLAGS := \
     $(MY_WEBRTC_COMMON_DEFS)
 
+LOCAL_CFLAGS_arm := $(MY_WEBRTC_COMMON_DEFS_arm)
+LOCAL_CFLAGS_x86 := $(MY_WEBRTC_COMMON_DEFS_x86)
+LOCAL_CFLAGS_mips := $(MY_WEBRTC_COMMON_DEFS_mips)
+LOCAL_CFLAGS_arm64 := $(MY_WEBRTC_COMMON_DEFS_arm64)
+LOCAL_CFLAGS_x86_64 := $(MY_WEBRTC_COMMON_DEFS_x86_64)
+LOCAL_CFLAGS_mips64 := $(MY_WEBRTC_COMMON_DEFS_mips64)
+
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/include \
     $(LOCAL_PATH)/../..
 
 ifeq ($(ARCH_ARM_HAVE_NEON),true)
-LOCAL_SRC_FILES += \
+LOCAL_SRC_FILES_arm += \
     min_max_operations_neon.c
-LOCAL_CFLAGS += \
+LOCAL_CFLAGS_arm += \
     $(MY_ARM_CFLAGS_NEON)
 endif
 
-ifeq ($(TARGET_ARCH),arm)
-LOCAL_SRC_FILES += \
-    spl_sqrt_floor.s
-else
-LOCAL_SRC_FILES += \
-    spl_sqrt_floor.c
-endif
+my_as_src := spl_sqrt_floor.s
+my_c_src := spl_sqrt_floor.c
+LOCAL_SRC_FILES_arm += $(my_as_src)
+LOCAL_SRC_FILES_x86 += $(my_c_src)
+LOCAL_SRC_FILES_mips += $(my_c_src)
+LOCAL_SRC_FILES_arm64 += $(my_c_src)
+LOCAL_SRC_FILES_x86_64 += $(my_c_src)
+LOCAL_SRC_FILES_mips64 += $(my_c_src)
 
-ifeq ($(TARGET_OS)-$(TARGET_SIMULATOR),linux-true)
-LOCAL_LDLIBS += -ldl -lpthread
-endif
-
-ifneq ($(TARGET_SIMULATOR),true)
 LOCAL_SHARED_LIBRARIES += libdl
-endif
 
 ifndef NDK_ROOT
 ifndef WEBRTC_STL
