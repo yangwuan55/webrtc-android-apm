@@ -42,7 +42,10 @@ LOCAL_STATIC_LIBRARIES := \
     libwebrtc_system_wrappers$(MY_LIB_SUFFIX)
 
 ifeq ($(WEBRTC_BUILD_NEON_LIBS),true)
-LOCAL_STATIC_LIBRARIES += \
+# We need to dup libwebrtc_isacfix$(MY_LIB_SUFFIX) because ibwebrtc_isacfix_neon$(MY_LIB_SUFFIX)
+# has dependency on it.
+LOCAL_STATIC_LIBRARIES_arm += \
+    libwebrtc_isacfix$(MY_LIB_SUFFIX) \
     libwebrtc_isacfix_neon$(MY_LIB_SUFFIX)
 endif
 

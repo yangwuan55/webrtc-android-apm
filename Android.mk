@@ -29,7 +29,7 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
 
 # Add Neon libraries.
 ifeq ($(WEBRTC_BUILD_NEON_LIBS),true)
-LOCAL_WHOLE_STATIC_LIBRARIES += \
+LOCAL_WHOLE_STATIC_LIBRARIES_arm += \
     libwebrtc_aecm_neon \
     libwebrtc_ns_neon
 endif
@@ -63,7 +63,7 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
     libwebrtc_spl \
     libwebrtc_system_wrappers
 ifeq ($(WEBRTC_BUILD_NEON_LIBS),true)
-LOCAL_WHOLE_STATIC_LIBRARIES += \
+LOCAL_WHOLE_STATIC_LIBRARIES_arm += \
     libwebrtc_isacfix_neon
 endif
 
@@ -95,7 +95,7 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
     libwebrtc_spl_gnustl_static \
     libwebrtc_system_wrappers_gnustl_static
 ifeq ($(WEBRTC_BUILD_NEON_LIBS),true)
-LOCAL_WHOLE_STATIC_LIBRARIES += \
+LOCAL_WHOLE_STATIC_LIBRARIES_arm += \
     libwebrtc_isacfix_neon_gnustl_static
 endif
 
