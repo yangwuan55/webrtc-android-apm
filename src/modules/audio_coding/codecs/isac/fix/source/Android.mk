@@ -118,12 +118,8 @@ LOCAL_CFLAGS := \
     -mfloat-abi=softfp \
     -flax-vector-conversions
 
+LOCAL_MODULE_TARGET_ARCH := arm
 LOCAL_CFLAGS_arm := $(MY_WEBRTC_COMMON_DEFS_arm)
-LOCAL_CFLAGS_x86 := $(MY_WEBRTC_COMMON_DEFS_x86)
-LOCAL_CFLAGS_mips := $(MY_WEBRTC_COMMON_DEFS_mips)
-LOCAL_CFLAGS_arm64 := $(MY_WEBRTC_COMMON_DEFS_arm64)
-LOCAL_CFLAGS_x86_64 := $(MY_WEBRTC_COMMON_DEFS_x86_64)
-LOCAL_CFLAGS_mips64 := $(MY_WEBRTC_COMMON_DEFS_mips64)
 
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../interface \
@@ -181,7 +177,10 @@ LOCAL_STATIC_LIBRARIES := \
     libwebrtc_system_wrappers$(MY_LIB_SUFFIX)
 
 ifeq ($(WEBRTC_BUILD_NEON_LIBS),true)
-LOCAL_STATIC_LIBRARIES += \
+# We need to dup libwebrtc_isacfix$(MY_LIB_SUFFIX) because ibwebrtc_isacfix_neon$(MY_LIB_SUFFIX)
+# has dependency on it.
+LOCAL_STATIC_LIBRARIES_arm += \
+    libwebrtc_isacfix$(MY_LIB_SUFFIX) \
     libwebrtc_isacfix_neon$(MY_LIB_SUFFIX)
 endif
 
