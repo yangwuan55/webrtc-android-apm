@@ -33,7 +33,7 @@ MY_ARM_CFLAGS_NEON := \
 endif
 
 ifneq (,$(filter '-DWEBRTC_DETECT_ARM_NEON' '-DWEBRTC_ARCH_ARM_NEON', \
-    $(MY_WEBRTC_COMMON_DEFS)))
+    $(MY_WEBRTC_COMMON_DEFS_arm)))
 WEBRTC_BUILD_NEON_LIBS := true
 endif
 
