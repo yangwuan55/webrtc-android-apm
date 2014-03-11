@@ -45,20 +45,30 @@ LOCAL_SRC_FILES := \
     spectrum_ar_model_tables.c \
     transform.c
 
-ifeq ($(ARCH_ARM_HAVE_ARMV7A),true)
 # Using .S (instead of .s) extention is to include a C header file in assembly.
-LOCAL_SRC_FILES += \
+my_as_src := \
     lattice_armv7.S \
     pitch_filter_armv6.S
-else
-LOCAL_SRC_FILES += \
+my_c_src := \
     lattice_c.c \
     pitch_filter_c.c
-endif
+LOCAL_SRC_FILES_arm += $(my_as_src)
+LOCAL_SRC_FILES_x86 += $(my_c_src)
+LOCAL_SRC_FILES_mips += $(my_c_src)
+LOCAL_SRC_FILES_arm64 += $(my_c_src)
+LOCAL_SRC_FILES_x86_64 += $(my_c_src)
+LOCAL_SRC_FILES_mips64 += $(my_c_src)
 
 # Flags passed to both C and C++ files.
 LOCAL_CFLAGS := \
     $(MY_WEBRTC_COMMON_DEFS)
+
+LOCAL_CFLAGS_arm := $(MY_WEBRTC_COMMON_DEFS_arm)
+LOCAL_CFLAGS_x86 := $(MY_WEBRTC_COMMON_DEFS_x86)
+LOCAL_CFLAGS_mips := $(MY_WEBRTC_COMMON_DEFS_mips)
+LOCAL_CFLAGS_arm64 := $(MY_WEBRTC_COMMON_DEFS_arm64)
+LOCAL_CFLAGS_x86_64 := $(MY_WEBRTC_COMMON_DEFS_x86_64)
+LOCAL_CFLAGS_mips64 := $(MY_WEBRTC_COMMON_DEFS_mips64)
 
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../interface \
@@ -102,6 +112,13 @@ LOCAL_CFLAGS := \
     -mfloat-abi=softfp \
     -flax-vector-conversions
 
+LOCAL_CFLAGS_arm := $(MY_WEBRTC_COMMON_DEFS_arm)
+LOCAL_CFLAGS_x86 := $(MY_WEBRTC_COMMON_DEFS_x86)
+LOCAL_CFLAGS_mips := $(MY_WEBRTC_COMMON_DEFS_mips)
+LOCAL_CFLAGS_arm64 := $(MY_WEBRTC_COMMON_DEFS_arm64)
+LOCAL_CFLAGS_x86_64 := $(MY_WEBRTC_COMMON_DEFS_x86_64)
+LOCAL_CFLAGS_mips64 := $(MY_WEBRTC_COMMON_DEFS_mips64)
+
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../interface \
     $(LOCAL_PATH)/../../../../../.. \
@@ -123,4 +140,3 @@ endif
 include $(BUILD_STATIC_LIBRARY)
 
 endif # ifeq ($(WEBRTC_BUILD_NEON_LIBS),true)
-
