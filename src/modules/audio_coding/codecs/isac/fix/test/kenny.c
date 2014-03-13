@@ -363,7 +363,7 @@ int main(int argc, char* argv[])
       testCE = atoi(argv[i + 1]);
       if (testCE==1 || testCE==2) {
         i++;
-        scale = (float)atof( argv[i+1] );
+        scale = (float)strtod( argv[i+1], NULL );
       } else if (testCE < 1 || testCE > 3) {
         printf("\n%d is not a valid CE-test number, valid Fault "
                "Scenarios are numbered 1-3\n", testCE);
