@@ -12,7 +12,7 @@ MY_WEBRTC_ROOT_PATH := $(call my-dir)
 include $(MY_WEBRTC_ROOT_PATH)/src/common_audio/resampler/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/common_audio/signal_processing/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/common_audio/vad/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_coding/codecs/isac/fix/source/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_coding/codecs/isac/fix/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_coding/codecs/isac/main/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/aec/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/aecm/Android.mk
@@ -27,7 +27,7 @@ include $(MY_WEBRTC_ROOT_PATH)/src/system_wrappers/source/Android.mk
 WEBRTC_STL := gnustl_static
 include $(MY_WEBRTC_ROOT_PATH)/src/system_wrappers/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_coding/codecs/isac/main/source/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_coding/codecs/isac/fix/source/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_coding/codecs/isac/fix/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/common_audio/signal_processing/Android.mk
 
 # build .so
