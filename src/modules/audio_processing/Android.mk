@@ -141,7 +141,7 @@ LOCAL_CPP_EXTENSION := .cc
 LOCAL_SRC_FILES:= \
     $(call all-proto-files-under, test) \
     test/unit_test.cc \
-    ../../../test/testsupport/fileutils.cc
+    test/testsupport/fileutils.cc
 
 # Flags passed to both C and C++ files.
 LOCAL_CFLAGS := \
@@ -159,7 +159,7 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/interface \
     $(LOCAL_PATH)/../interface \
     $(LOCAL_PATH)/../.. \
-    $(LOCAL_PATH)/../../../test \
+    $(LOCAL_PATH)/test \
     $(LOCAL_PATH)/../../system_wrappers/interface \
     $(LOCAL_PATH)/../../common_audio/signal_processing/include \
     external/gtest/include \
