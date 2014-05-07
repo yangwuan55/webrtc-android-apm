@@ -43,7 +43,6 @@ LOCAL_SHARED_LIBRARIES := \
     libcutils \
     libdl
 
-ifndef NDK_ROOT
 ifndef WEBRTC_STL
 LOCAL_SHARED_LIBRARIES += libstlport
 include external/stlport/libstlport.mk
@@ -51,9 +50,6 @@ else
 LOCAL_NDK_STL_VARIANT := $(WEBRTC_STL)
 LOCAL_SDK_VERSION := 14
 LOCAL_MODULE := $(LOCAL_MODULE)_$(WEBRTC_STL)
-endif
-else
-LOCAL_SHARED_LIBRARIES += libstlport
 endif
 
 include $(BUILD_STATIC_LIBRARY)

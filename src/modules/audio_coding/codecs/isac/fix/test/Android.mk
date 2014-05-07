@@ -54,9 +54,6 @@ LOCAL_SHARED_LIBRARIES := \
 
 LOCAL_MODULE:= webrtc_isac_test
 
-ifdef NDK_ROOT
-include $(BUILD_EXECUTABLE)
-else
 ifndef WEBRTC_STL
 LOCAL_SHARED_LIBRARIES += libstlport
 include external/stlport/libstlport.mk
@@ -67,4 +64,3 @@ LOCAL_MODULE := $(LOCAL_MODULE)_$(WEBRTC_STL)
 LOCAL_SHARED_LIBRARIES :=
 endif
 include $(BUILD_NATIVE_TEST)
-endif
