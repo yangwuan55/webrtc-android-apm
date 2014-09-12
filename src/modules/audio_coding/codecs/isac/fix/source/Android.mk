@@ -92,6 +92,9 @@ ifeq ($(WEBRTC_BUILD_NEON_LIBS),true)
 
 include $(CLEAR_VARS)
 
+# filters_neon.c does not compile with Clang, http://b/17457665.
+LOCAL_CLANG := false
+
 LOCAL_ARM_MODE := arm
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 LOCAL_MODULE := libwebrtc_isacfix_neon
