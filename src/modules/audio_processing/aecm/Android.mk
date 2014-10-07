@@ -73,6 +73,8 @@ LOCAL_MODULE := libwebrtc_aecm_neon
 LOCAL_MODULE_TAGS := optional
 
 LOCAL_SRC_FILES := aecm_core_neon.c
+# Assembly code in aecm_core_neon.c does not compile with Clang.
+LOCAL_CLANG_CFLAGS_arm += -no-integrated-as
 
 # Flags passed to both C and C++ files.
 LOCAL_CFLAGS := \
