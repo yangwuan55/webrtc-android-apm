@@ -61,16 +61,12 @@ LOCAL_SHARED_LIBRARIES := \
     libcutils \
     libdl
 
-ifndef NDK_ROOT
 ifndef WEBRTC_STL
 include external/stlport/libstlport.mk
 else
 LOCAL_NDK_STL_VARIANT := $(WEBRTC_STL)
 LOCAL_SDK_VERSION := 14
 LOCAL_MODULE := $(LOCAL_MODULE)_$(WEBRTC_STL)
-endif
-else
-LOCAL_SHARED_LIBRARIES += libstlport
 endif
 
 include $(BUILD_STATIC_LIBRARY)
@@ -118,10 +114,6 @@ LOCAL_SHARED_LIBRARIES := \
 
 LOCAL_MODULE:= webrtc_apm_process_test
 
-ifdef NDK_ROOT
-LOCAL_SHARED_LIBRARIES += libstlport
-include $(BUILD_EXECUTABLE)
-else
 ifndef WEBRTC_STL
 include external/stlport/libstlport.mk
 else
@@ -130,7 +122,6 @@ LOCAL_SDK_VERSION := 14
 LOCAL_MODULE := $(LOCAL_MODULE)_$(WEBRTC_STL)
 endif
 include $(BUILD_NATIVE_TEST)
-endif
 
 # apm unit test app
 
@@ -179,10 +170,6 @@ LOCAL_SHARED_LIBRARIES := \
 
 LOCAL_MODULE:= webrtc_apm_unit_test
 
-ifdef NDK_ROOT
-LOCAL_SHARED_LIBRARIES += libstlport
-include $(BUILD_EXECUTABLE)
-else
 ifndef WEBRTC_STL
 include external/stlport/libstlport.mk
 else
@@ -191,4 +178,3 @@ LOCAL_SDK_VERSION := 14
 LOCAL_MODULE := $(LOCAL_MODULE)_$(WEBRTC_STL)
 endif
 include $(BUILD_NATIVE_TEST)
-endif

@@ -44,9 +44,7 @@ LOCAL_SHARED_LIBRARIES := \
 
 LOCAL_PRELINK_MODULE := false
 
-ifndef NDK_ROOT
 include external/stlport/libstlport.mk
-endif
 include $(BUILD_SHARED_LIBRARY)
 
 
@@ -76,9 +74,7 @@ LOCAL_SHARED_LIBRARIES := \
 
 LOCAL_PRELINK_MODULE := false
 
-ifndef NDK_ROOT
 include external/stlport/libstlport.mk
-endif
 include $(BUILD_SHARED_LIBRARY)
 
 

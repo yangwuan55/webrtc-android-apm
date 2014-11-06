@@ -1,7 +1,15 @@
-LOCAL_PATH := $(call my-dir)
+# Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
+#
+# Use of this source code is governed by a BSD-style license
+# that can be found in the LICENSE file in the root of the source
+# tree. An additional intellectual property rights grant can be found
+# in the file PATENTS.  All contributing project authors may
+# be found in the AUTHORS file in the root of the source tree.
 
 ###########################
 # isac test app
+
+LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 
@@ -46,9 +54,6 @@ LOCAL_SHARED_LIBRARIES := \
 
 LOCAL_MODULE:= webrtc_isac_test
 
-ifdef NDK_ROOT
-include $(BUILD_EXECUTABLE)
-else
 ifndef WEBRTC_STL
 LOCAL_SHARED_LIBRARIES += libstlport
 include external/stlport/libstlport.mk
@@ -59,4 +64,3 @@ LOCAL_MODULE := $(LOCAL_MODULE)_$(WEBRTC_STL)
 LOCAL_SHARED_LIBRARIES :=
 endif
 include $(BUILD_NATIVE_TEST)
-endif
