@@ -43,8 +43,8 @@ LOCAL_SRC_FILES := \
     trace_posix.cc \
     rw_lock_posix.cc
 
-LOCAL_CFLAGS := \
-    $(MY_WEBRTC_COMMON_DEFS)
+LOCAL_CFLAGS := $(MY_WEBRTC_COMMON_DEFS)
+LOCAL_CPPFLAGS := -std=gnu++98
 
 LOCAL_CFLAGS_arm := $(MY_WEBRTC_COMMON_DEFS_arm)
 LOCAL_CFLAGS_x86 := $(MY_WEBRTC_COMMON_DEFS_x86)
