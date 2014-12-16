@@ -39,7 +39,6 @@ LOCAL_SHARED_LIBRARIES := \
     libdl \
     libprotobuf-cpp-lite \
 
-LOCAL_PRELINK_MODULE := false
 
 include $(BUILD_SHARED_LIBRARY)
 
@@ -67,7 +66,6 @@ LOCAL_SHARED_LIBRARIES := \
     libcutils \
     libdl \
 
-LOCAL_PRELINK_MODULE := false
 
 include $(BUILD_SHARED_LIBRARY)
 
@@ -95,7 +93,6 @@ LOCAL_SHARED_LIBRARIES := \
     libcutils \
     libdl
 
-LOCAL_PRELINK_MODULE := false
 
 LOCAL_NDK_STL_VARIANT := gnustl_static
 LOCAL_SDK_VERSION := 14
