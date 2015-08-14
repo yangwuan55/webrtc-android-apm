@@ -72,8 +72,6 @@ LOCAL_SRC_FILES := nsx_core_neon.c
 # Flags passed to both C and C++ files.
 LOCAL_CFLAGS := \
     $(MY_WEBRTC_COMMON_DEFS) \
-    -mfpu=neon \
-    -mfloat-abi=softfp \
     -flax-vector-conversions
 
 LOCAL_MODULE_TARGET_ARCH := arm
