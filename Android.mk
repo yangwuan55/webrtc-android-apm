@@ -60,9 +60,8 @@ LOCAL_WHOLE_STATIC_LIBRARIES_arm += \
     libwebrtc_isacfix_neon
 endif
 
-LOCAL_STATIC_LIBRARIES := \
-    libprotobuf-cpp-lite
 LOCAL_SHARED_LIBRARIES := \
+    libprotobuf-cpp-lite \
     libcutils \
     libdl \
 

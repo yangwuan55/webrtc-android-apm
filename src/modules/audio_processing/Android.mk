@@ -111,7 +111,7 @@ ifndef WEBRTC_STL
 LOCAL_SHARED_LIBRARIES += libprotobuf-cpp-lite
 else
 LOCAL_STATIC_LIBRARIES := \
-    libprotobuf-cpp-lite
+    libprotobuf-cpp-lite-ndk
 LOCAL_NDK_STL_VARIANT := $(WEBRTC_STL)
 LOCAL_SDK_VERSION := 14
 LOCAL_MODULE := $(LOCAL_MODULE)_$(WEBRTC_STL)
