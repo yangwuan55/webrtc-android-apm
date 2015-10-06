@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+ *  Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
@@ -19,8 +19,9 @@ namespace webrtc {
 
 class Module {
  public:
-  // Change the unique identifier of this object.
-  virtual int32_t ChangeUniqueId(const int32_t id) = 0;
+  // TODO(henrika): Remove this when chrome is updated.
+  // DEPRICATED Change the unique identifier of this object.
+  virtual int32_t ChangeUniqueId(const int32_t) { return 0; }
 
   // Returns the number of milliseconds until the module want a worker
   // thread to call Process.
@@ -41,7 +42,7 @@ class RefCountedModule : public Module {
   // TODO(perkj): Make this pure virtual when Chromium have implemented  
   // reference counting ADM and Video capture module.
   virtual int32_t AddRef() {
-    assert(!"Not implemented.");
+    assert(false && "Not implemented.");
     return 1;
   }
 
@@ -52,7 +53,7 @@ class RefCountedModule : public Module {
   // TODO(perkj): Make this pure virtual when Chromium have implemented  
   // reference counting ADM and Video capture module.
   virtual int32_t Release() {
-    assert(!"Not implemented.");
+    assert(false && "Not implemented.");
     return 1;
   }
 

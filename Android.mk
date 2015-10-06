@@ -103,7 +103,7 @@ webrtc_path := $(LOCAL_PATH)
 include $(webrtc_path)/src/common_audio/resampler/Android.mk
 include $(webrtc_path)/src/common_audio/signal_processing/Android.mk
 include $(webrtc_path)/src/common_audio/vad/Android.mk
-include $(webrtc_path)/src/modules/audio_coding/codecs/isac/fix/Android.mk
+include $(webrtc_path)/src/modules/audio_coding/codecs/isac/fix/source/Android.mk
 include $(webrtc_path)/src/modules/audio_coding/codecs/isac/main/source/Android.mk
 include $(webrtc_path)/src/modules/audio_processing/aec/Android.mk
 include $(webrtc_path)/src/modules/audio_processing/aecm/Android.mk
@@ -111,12 +111,11 @@ include $(webrtc_path)/src/modules/audio_processing/agc/Android.mk
 include $(webrtc_path)/src/modules/audio_processing/Android.mk
 include $(webrtc_path)/src/modules/audio_processing/ns/Android.mk
 include $(webrtc_path)/src/modules/audio_processing/utility/Android.mk
-#include $(webrtc_path)/src/modules/utility/source/Android.mk
 include $(webrtc_path)/src/system_wrappers/source/Android.mk
 
 # libwebrtc_audio_coding_gnustl_static dependencies
 WEBRTC_STL := gnustl_static
 include $(webrtc_path)/src/system_wrappers/source/Android.mk
+include $(webrtc_path)/src/modules/audio_coding/codecs/isac/fix/source/Android.mk
 include $(webrtc_path)/src/modules/audio_coding/codecs/isac/main/source/Android.mk
-include $(webrtc_path)/src/modules/audio_coding/codecs/isac/fix/Android.mk
 include $(webrtc_path)/src/common_audio/signal_processing/Android.mk

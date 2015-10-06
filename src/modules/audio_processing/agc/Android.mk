@@ -24,6 +24,7 @@ LOCAL_SRC_FILES := \
 LOCAL_CFLAGS := \
     $(MY_WEBRTC_COMMON_DEFS)
 
+# digital_agc.c: error: comparison of address of 'stt->vadFarend' equal to a null pointer
 LOCAL_CLANG_CFLAGS := \
     -Wno-tautological-pointer-compare
 
@@ -35,7 +36,7 @@ LOCAL_CFLAGS_x86_64 := $(MY_WEBRTC_COMMON_DEFS_x86_64)
 LOCAL_CFLAGS_mips64 := $(MY_WEBRTC_COMMON_DEFS_mips64)
 
 LOCAL_C_INCLUDES := \
-    $(LOCAL_PATH)/interface \
+    $(LOCAL_PATH)/include \
     $(LOCAL_PATH)/../../.. \
     $(LOCAL_PATH)/../../../common_audio/signal_processing/include
 

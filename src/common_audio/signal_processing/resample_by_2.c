@@ -17,7 +17,7 @@
 
 #include "signal_processing_library.h"
 
-#ifdef WEBRTC_ARCH_ARM_V7A
+#ifdef WEBRTC_ARCH_ARM_V7
 
 // allpass filter coefficients.
 static const WebRtc_UWord32 kResampleAllpass1[3] = {3284, 24441, 49528 << 15};
@@ -31,8 +31,8 @@ static __inline WebRtc_Word32 MUL_ACCUM_1(WebRtc_Word32 tbl_value,
                                           WebRtc_Word32 diff,
                                           WebRtc_Word32 state) {
   WebRtc_Word32 result;
-  __asm__("smlawb %0, %1, %2, %3": "=r"(result): "r"(diff),
-                                   "r"(tbl_value), "r"(state));
+  __asm__("smlawb %r0, %r1, %r2, %r3": "=r"(result): "r"(diff),
+                                       "r"(tbl_value), "r"(state));
   return result;
 }
 
@@ -47,8 +47,8 @@ static __inline WebRtc_Word32 MUL_ACCUM_2(WebRtc_Word32 tbl_value,
                                           WebRtc_Word32 diff,
                                           WebRtc_Word32 state) {
   WebRtc_Word32 result;
-  __asm__("smmla %0, %1, %2, %3": "=r"(result): "r"(diff << 1),
-                                  "r"(tbl_value), "r"(state));
+  __asm__("smmla %r0, %r1, %r2, %r3": "=r"(result): "r"(diff << 1),
+                                      "r"(tbl_value), "r"(state));
   return result;
 }
 
@@ -62,7 +62,7 @@ static const WebRtc_UWord16 kResampleAllpass2[3] = {12199, 37471, 60255};
 #define MUL_ACCUM_1(a, b, c) WEBRTC_SPL_SCALEDIFF32(a, b, c)
 #define MUL_ACCUM_2(a, b, c) WEBRTC_SPL_SCALEDIFF32(a, b, c)
 
-#endif  // WEBRTC_ARCH_ARM_V7A
+#endif  // WEBRTC_ARCH_ARM_V7
 
 
 // decimator

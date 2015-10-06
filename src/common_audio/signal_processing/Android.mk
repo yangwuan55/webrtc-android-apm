@@ -1,4 +1,4 @@
-# Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+# Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
 #
 # Use of this source code is governed by a BSD-style license
 # that can be found in the LICENSE file in the root of the source
@@ -20,15 +20,11 @@ LOCAL_SRC_FILES := \
     auto_corr_to_refl_coef.c \
     auto_correlation.c \
     complex_fft.c \
-    complex_bit_reverse.c \
     copy_set_operations.c \
-    cross_correlation.c \
     division_operations.c \
     dot_product_with_scale.c \
-    downsample_fast.c \
     energy.c \
     filter_ar.c \
-    filter_ar_fast_q12.c \
     filter_ma_fast_q12.c \
     get_hanning_window.c \
     get_scaling_square.c \
@@ -64,21 +60,39 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/include \
     $(LOCAL_PATH)/../..
 
-ifeq ($(ARCH_ARM_HAVE_NEON),true)
-LOCAL_SRC_FILES_arm += \
-    min_max_operations_neon.c
-LOCAL_CFLAGS_arm += \
-    $(MY_ARM_CFLAGS_NEON)
-endif
+# Some new .s files have compilation error with AOSP configuration,
+# so they are not used. The next merge of upstream .S file might work.
+#ifeq ($(ARCH_ARM_HAVE_NEON),true)
+#LOCAL_SRC_FILES += \
+#    cross_correlation_neon.s \
+#    downsample_fast_neon.s \
+#    min_max_operations_neon.s \
+#    vector_scaling_operations_neon.s
+#LOCAL_CFLAGS += \
+#    $(MY_ARM_CFLAGS_NEON)
+#else
+LOCAL_SRC_FILES += \
+    cross_correlation.c \
+    downsample_fast.c
+#endif
 
-my_as_src := spl_sqrt_floor.s
-my_c_src := spl_sqrt_floor.c
-LOCAL_SRC_FILES_arm += $(my_as_src)
-LOCAL_SRC_FILES_x86 += $(my_c_src)
-LOCAL_SRC_FILES_mips += $(my_c_src)
-LOCAL_SRC_FILES_arm64 += $(my_c_src)
-LOCAL_SRC_FILES_x86_64 += $(my_c_src)
-LOCAL_SRC_FILES_mips64 += $(my_c_src)
+#ifeq ($(ARCH_ARM_HAVE_ARMV7A),true_skip)
+#LOCAL_SRC_FILES += \
+#    filter_ar_fast_q12_armv7.s
+#else
+LOCAL_SRC_FILES += \
+    filter_ar_fast_q12.c
+#endif
+
+ifeq ($(TARGET_ARCH),arm)
+LOCAL_SRC_FILES += \
+    complex_bit_reverse_arm.s \
+    spl_sqrt_floor_arm.s
+else
+LOCAL_SRC_FILES += \
+    complex_bit_reverse.c \
+    spl_sqrt_floor.c
+endif
 
 ifdef WEBRTC_STL
 LOCAL_NDK_STL_VARIANT := $(WEBRTC_STL)

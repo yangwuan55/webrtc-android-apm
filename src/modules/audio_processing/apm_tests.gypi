@@ -1,4 +1,4 @@
-# Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+# Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
 #
 # Use of this source code is governed by a BSD-style license
 # that can be found in the LICENSE file in the root of the source
@@ -13,9 +13,9 @@
       'type': 'executable',
       'conditions': [
         ['prefer_fixed_point==1', {
-          'defines': [ 'WEBRTC_APM_UNIT_TEST_FIXED_PROFILE' ],
+          'defines': [ 'WEBRTC_AUDIOPROC_FIXED_PROFILE' ],
         }, {
-          'defines': [ 'WEBRTC_APM_UNIT_TEST_FLOAT_PROFILE' ],
+          'defines': [ 'WEBRTC_AUDIOPROC_FLOAT_PROFILE' ],
         }],
         ['enable_protobuf==1', {
           'defines': [ 'WEBRTC_AUDIOPROC_DEBUG_DUMP' ],
@@ -26,10 +26,14 @@
         'audioproc_unittest_proto',
         '<(webrtc_root)/common_audio/common_audio.gyp:signal_processing',
         '<(webrtc_root)/system_wrappers/source/system_wrappers.gyp:system_wrappers',
-        '<(webrtc_root)/../test/test.gyp:test_support',
-        '<(webrtc_root)/../testing/gtest.gyp:gtest',
+        '<(webrtc_root)/test/test.gyp:test_support',
+        '<(DEPTH)/testing/gtest.gyp:gtest',
       ],
-      'sources': [ 'test/unit_test.cc', ],
+      'sources': [
+        'aec/system_delay_unittest.cc',
+        'test/unit_test.cc',
+        'utility/delay_estimator_unittest.cc',
+      ],
     },
     {
       'target_name': 'audioproc_unittest_proto',
@@ -55,7 +59,7 @@
             'audio_processing',
             'audioproc_debug_proto',
             '<(webrtc_root)/system_wrappers/source/system_wrappers.gyp:system_wrappers',
-            '<(webrtc_root)/../testing/gtest.gyp:gtest',
+            '<(DEPTH)/testing/gtest.gyp:gtest',
           ],
           'sources': [ 'test/process_test.cc', ],
         },
@@ -65,7 +69,7 @@
           'dependencies': [
             'audioproc_debug_proto',
             '<(webrtc_root)/system_wrappers/source/system_wrappers.gyp:system_wrappers',
-            '<(webrtc_root)/../third_party/google-gflags/google-gflags.gyp:google-gflags',
+            '<(DEPTH)/third_party/google-gflags/google-gflags.gyp:google-gflags',
           ],
           'sources': [ 'test/unpack.cc', ],
         },

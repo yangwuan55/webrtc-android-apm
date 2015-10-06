@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+ *  Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
@@ -41,9 +41,9 @@ int MapSetting(NoiseSuppression::Level level) {
       return 2;
     case NoiseSuppression::kVeryHigh:
       return 3;
-    default:
-      return -1;
   }
+  assert(false);
+  return -1;
 }
 }  // namespace
 
@@ -88,7 +88,7 @@ int NoiseSuppressionImpl::ProcessCaptureAudio(AudioBuffer* audio) {
 }
 
 int NoiseSuppressionImpl::Enable(bool enable) {
-  CriticalSectionScoped crit_scoped(*apm_->crit());
+  CriticalSectionScoped crit_scoped(apm_->crit());
   return EnableComponent(enable);
 }
 
@@ -97,7 +97,7 @@ bool NoiseSuppressionImpl::is_enabled() const {
 }
 
 int NoiseSuppressionImpl::set_level(Level level) {
-  CriticalSectionScoped crit_scoped(*apm_->crit());
+  CriticalSectionScoped crit_scoped(apm_->crit());
   if (MapSetting(level) == -1) {
     return apm_->kBadParameterError;
   }
@@ -110,18 +110,18 @@ NoiseSuppression::Level NoiseSuppressionImpl::level() const {
   return level_;
 }
 
-int NoiseSuppressionImpl::get_version(char* version,
-                                      int version_len_bytes) const {
+float NoiseSuppressionImpl::speech_probability() const {
 #if defined(WEBRTC_NS_FLOAT)
-  if (WebRtcNs_get_version(version, version_len_bytes) != 0)
-#elif defined(WEBRTC_NS_FIXED)
-  if (WebRtcNsx_get_version(version, version_len_bytes) != 0)
-#endif
-  {
-      return apm_->kBadParameterError;
+  float probability_average = 0.0f;
+  for (int i = 0; i < num_handles(); i++) {
+    Handle* my_handle = static_cast<Handle*>(handle(i));
+    probability_average += WebRtcNs_prior_speech_probability(my_handle);
   }
-
-  return apm_->kNoError;
+  return probability_average / num_handles();
+#elif defined(WEBRTC_NS_FIXED)
+  // Currently not available for the fixed point implementation.
+  return apm_->kUnsupportedFunctionError;
+#endif
 }
 
 void* NoiseSuppressionImpl::CreateHandle() const {

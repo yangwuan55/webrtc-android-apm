@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+ *  Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
@@ -737,7 +737,8 @@ int WebRtcNs_ProcessCore(NSinst_t* inst,
   float   magn[HALF_ANAL_BLOCKL], noise[HALF_ANAL_BLOCKL];
   float   theFilter[HALF_ANAL_BLOCKL], theFilterTmp[HALF_ANAL_BLOCKL];
   float   snrLocPost[HALF_ANAL_BLOCKL], snrLocPrior[HALF_ANAL_BLOCKL];
-  float   probSpeechFinal[HALF_ANAL_BLOCKL], previousEstimateStsa[HALF_ANAL_BLOCKL];
+  float   probSpeechFinal[HALF_ANAL_BLOCKL] = { 0 };
+  float   previousEstimateStsa[HALF_ANAL_BLOCKL];
   float   real[ANAL_BLOCKL_MAX], imag[HALF_ANAL_BLOCKL];
   // Variables during startup
   float   sum_log_i = 0.0;
@@ -1254,31 +1255,29 @@ int WebRtcNs_ProcessCore(NSinst_t* inst,
     for (i = 0; i < inst->magnLen; i++) {
       inst->speechProbHB[i] = probSpeechFinal[i];
     }
-    if (inst->blockInd > END_STARTUP_LONG) {
-      // average speech prob from low band
-      // avg over second half (i.e., 4->8kHz) of freq. spectrum
-      avgProbSpeechHB = 0.0;
-      for (i = inst->magnLen - deltaBweHB - 1; i < inst->magnLen - 1; i++) {
-        avgProbSpeechHB += inst->speechProbHB[i];
-      }
-      avgProbSpeechHB = avgProbSpeechHB / ((float)deltaBweHB);
-      // average filter gain from low band
-      // average over second half (i.e., 4->8kHz) of freq. spectrum
-      avgFilterGainHB = 0.0;
-      for (i = inst->magnLen - deltaGainHB - 1; i < inst->magnLen - 1; i++) {
-        avgFilterGainHB += inst->smooth[i];
-      }
-      avgFilterGainHB = avgFilterGainHB / ((float)(deltaGainHB));
-      avgProbSpeechHBTmp = (float)2.0 * avgProbSpeechHB - (float)1.0;
-      // gain based on speech prob:
-      gainModHB = (float)0.5 * ((float)1.0 + (float)tanh(gainMapParHB * avgProbSpeechHBTmp));
-      //combine gain with low band gain
-      gainTimeDomainHB = (float)0.5 * gainModHB + (float)0.5 * avgFilterGainHB;
-      if (avgProbSpeechHB >= (float)0.5) {
-        gainTimeDomainHB = (float)0.25 * gainModHB + (float)0.75 * avgFilterGainHB;
-      }
-      gainTimeDomainHB = gainTimeDomainHB * decayBweHB;
-    } // end of converged
+    // average speech prob from low band
+    // avg over second half (i.e., 4->8kHz) of freq. spectrum
+    avgProbSpeechHB = 0.0;
+    for (i = inst->magnLen - deltaBweHB - 1; i < inst->magnLen - 1; i++) {
+      avgProbSpeechHB += inst->speechProbHB[i];
+    }
+    avgProbSpeechHB = avgProbSpeechHB / ((float)deltaBweHB);
+    // average filter gain from low band
+    // average over second half (i.e., 4->8kHz) of freq. spectrum
+    avgFilterGainHB = 0.0;
+    for (i = inst->magnLen - deltaGainHB - 1; i < inst->magnLen - 1; i++) {
+      avgFilterGainHB += inst->smooth[i];
+    }
+    avgFilterGainHB = avgFilterGainHB / ((float)(deltaGainHB));
+    avgProbSpeechHBTmp = (float)2.0 * avgProbSpeechHB - (float)1.0;
+    // gain based on speech prob:
+    gainModHB = (float)0.5 * ((float)1.0 + (float)tanh(gainMapParHB * avgProbSpeechHBTmp));
+    //combine gain with low band gain
+    gainTimeDomainHB = (float)0.5 * gainModHB + (float)0.5 * avgFilterGainHB;
+    if (avgProbSpeechHB >= (float)0.5) {
+      gainTimeDomainHB = (float)0.25 * gainModHB + (float)0.75 * avgFilterGainHB;
+    }
+    gainTimeDomainHB = gainTimeDomainHB * decayBweHB;
     //make sure gain is within flooring range
     // flooring bottom
     if (gainTimeDomainHB < inst->denoiseBound) {

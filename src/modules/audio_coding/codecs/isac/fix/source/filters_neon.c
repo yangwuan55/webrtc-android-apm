@@ -72,7 +72,7 @@ int WebRtcIsacfix_AutocorrNeon(
   } else if (zeros_low == 0) {
     scaling = 1;
   }
-  reg64x1b = -scaling;
+  reg64x1b = (int64x1_t) (int64_t) -scaling;
   reg64x1a = vshl_s64(reg64x1a, reg64x1b);
 
   // Record the result.
@@ -143,7 +143,7 @@ int WebRtcIsacfix_AutocorrNeon(
       "vmov.32 d17[1], %[prod_upper]\n\t"
       "vadd.i64 d17, d18\n\t"
       "mov %[tmp], %[scaling], asr #31\n\t"
-      "vmov.32 d16, %[scaling], %[tmp]\n\t"
+      "vmov d16, %[scaling], %[tmp]\n\t"
       "vshl.s64 d17, d16\n\t"
       "vmov.32 %[sum], d17[0]\n\t"
 

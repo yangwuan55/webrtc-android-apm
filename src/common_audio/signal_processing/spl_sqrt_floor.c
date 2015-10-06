@@ -1,6 +1,6 @@
 /*
- * Written by Wilco Dijkstra, 1996.
- * Refer to NOTICE file at the root of git project.
+ * Written by Wilco Dijkstra, 1996. Refer to file LICENSE under
+ * trunk/third_party_mods/sqrt_floor.
  *
  * Minor modifications in code style for WebRTC, 2012.
  */
