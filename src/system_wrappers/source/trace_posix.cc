@@ -33,8 +33,12 @@
 #endif
 #define BUILDTIME __TIME__
 #define BUILDDATE __DATE__
+#ifdef __ANDROID__
+#define BUILDINFO BUILDMODE
+#else
 // example: "Oct 10 2002 12:05:30 r"
 #define BUILDINFO BUILDDATE " " BUILDTIME " " BUILDMODE
+#endif
 
 namespace webrtc {
 TracePosix::TracePosix()
