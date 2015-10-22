@@ -27,7 +27,6 @@
         'webrtc_vad.c',
         'vad_core.c',
         'vad_core.h',
-        'vad_defines.h',
         'vad_filterbank.c',
         'vad_filterbank.h',
         'vad_gmm.c',
@@ -38,22 +37,27 @@
     },
   ], # targets
    'conditions': [
-    ['build_with_chromium==0', {
+    ['include_tests==1', {
       'targets' : [
         {
           'target_name': 'vad_unittests',
           'type': 'executable',
           'dependencies': [
             'vad',
-            '<(webrtc_root)/../test/test.gyp:test_support_main',
-            '<(webrtc_root)/../testing/gtest.gyp:gtest',
+            '<(webrtc_root)/test/test.gyp:test_support_main',
+            '<(DEPTH)/testing/gtest.gyp:gtest',
           ],
           'sources': [
+            'vad_core_unittest.cc',
+            'vad_filterbank_unittest.cc',
+            'vad_gmm_unittest.cc',
+            'vad_sp_unittest.cc',
             'vad_unittest.cc',
+            'vad_unittest.h',
           ],
         }, # vad_unittests
       ], # targets
-    }], # build_with_chromium
+    }], # include_tests
   ], # conditions
 }
 

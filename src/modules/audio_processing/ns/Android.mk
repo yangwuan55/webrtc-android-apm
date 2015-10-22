@@ -1,4 +1,4 @@
-# Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+# Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
 #
 # Use of this source code is governed by a BSD-style license
 # that can be found in the LICENSE file in the root of the source
@@ -36,7 +36,7 @@ LOCAL_CFLAGS_x86_64 := $(MY_WEBRTC_COMMON_DEFS_x86_64)
 LOCAL_CFLAGS_mips64 := $(MY_WEBRTC_COMMON_DEFS_mips64)
 
 LOCAL_C_INCLUDES := \
-    $(LOCAL_PATH)/interface \
+    $(LOCAL_PATH)/include \
     $(LOCAL_PATH)/../utility \
     $(LOCAL_PATH)/../../.. \
     $(LOCAL_PATH)/../../../common_audio/signal_processing/include \
@@ -67,7 +67,26 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 LOCAL_MODULE := libwebrtc_ns_neon
 LOCAL_MODULE_TAGS := optional
 
+ifeq ($(TARGET_ARCH), arm64)
+# new nsx_core_neon.S does not compile with clang or gas.
 LOCAL_SRC_FILES := nsx_core_neon.c
+
+else
+GEN := $(LOCAL_PATH)/nsx_core_neon_offsets.h
+
+# Generate a header file nsx_core_neon_offsets.h which will be included in
+# assembly file nsx_core_neon.S, from file nsx_core_neon_offsets.c.
+$(GEN): $(LOCAL_PATH)/../../../../src/build/generate_asm_header.py \
+            $(intermediates)/nsx_core_neon_offsets.S
+	@python $^ $@ offset_nsx_
+
+$(intermediates)/nsx_core_neon_offsets.S: $(LOCAL_PATH)/nsx_core_neon_offsets.c
+	@$(TARGET_CC) $(addprefix -I, $(LOCAL_INCLUDES)) $(addprefix -isystem ,\
+            $(TARGET_C_INCLUDES)) -S -o $@ $^
+
+LOCAL_GENERATED_SOURCES := $(GEN)
+LOCAL_SRC_FILES := nsx_core_neon.S
+endif
 
 # Flags passed to both C and C++ files.
 LOCAL_CFLAGS := \
@@ -78,9 +97,11 @@ LOCAL_MODULE_TARGET_ARCH := arm
 LOCAL_CFLAGS_arm := $(MY_WEBRTC_COMMON_DEFS_arm)
 
 LOCAL_C_INCLUDES := \
-    $(LOCAL_PATH)/interface \
+    $(LOCAL_PATH)/include \
     $(LOCAL_PATH)/../../.. \
     $(LOCAL_PATH)/../../../common_audio/signal_processing/include
+
+LOCAL_INCLUDES := $(LOCAL_C_INCLUDES)
 
 ifdef WEBRTC_STL
 LOCAL_NDK_STL_VARIANT := $(WEBRTC_STL)

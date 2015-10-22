@@ -1,4 +1,4 @@
-# Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+# Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
 #
 # Use of this source code is governed by a BSD-style license
 # that can be found in the LICENSE file in the root of the source
@@ -20,9 +20,12 @@ LOCAL_SRC_FILES := \
     aec_resampler.c \
     aec_core.c \
     aec_rdft.c \
+
+ifeq ($(TARGET_ARCH),$(filter $(TARGET_ARCH),x86 x86_64))
+LOCAL_SRC_FILES += \
     aec_core_sse2.c \
     aec_rdft_sse2.c
-
+endif
 
 # Flags passed to both C and C++ files.
 LOCAL_CFLAGS := \
@@ -36,7 +39,7 @@ LOCAL_CFLAGS_x86_64 := $(MY_WEBRTC_COMMON_DEFS_x86_64)
 LOCAL_CFLAGS_mips64 := $(MY_WEBRTC_COMMON_DEFS_mips64)
 
 LOCAL_C_INCLUDES := \
-    $(LOCAL_PATH)/interface \
+    $(LOCAL_PATH)/include \
     $(LOCAL_PATH)/../utility \
     $(LOCAL_PATH)/../../.. \
     $(LOCAL_PATH)/../../../common_audio/signal_processing/include

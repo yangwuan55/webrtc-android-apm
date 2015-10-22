@@ -50,6 +50,7 @@ LOCAL_SRC_FILES := \
 LOCAL_CFLAGS := \
     $(MY_WEBRTC_COMMON_DEFS)
 
+# fft.c: error: comparison of array 'fftstate->Tmp0' equal to a null pointer
 LOCAL_CLANG_CFLAGS := \
     -Wno-tautological-pointer-compare
 

@@ -33,7 +33,9 @@ LOCAL_SRC_FILES := \
 # Flags passed to both C and C++ files.
 LOCAL_CFLAGS := \
     $(MY_WEBRTC_COMMON_DEFS) \
-    '-DWEBRTC_NS_FIXED'
+    '-DWEBRTC_NS_FIXED' \
+    '-DWEBRTC_ANDROID_PLATFORM_BUILD' \
+    '-DWEBRTC_AUDIOPROC_DEBUG_DUMP'
 #   floating point
 #   -DWEBRTC_NS_FLOAT'
 
@@ -45,11 +47,11 @@ LOCAL_CFLAGS_x86_64 := $(MY_WEBRTC_COMMON_DEFS_x86_64)
 LOCAL_CFLAGS_mips64 := $(MY_WEBRTC_COMMON_DEFS_mips64)
 
 LOCAL_C_INCLUDES := \
-    $(LOCAL_PATH)/interface \
-    $(LOCAL_PATH)/aec/interface \
-    $(LOCAL_PATH)/aecm/interface \
-    $(LOCAL_PATH)/agc/interface \
-    $(LOCAL_PATH)/ns/interface \
+    $(LOCAL_PATH)/include \
+    $(LOCAL_PATH)/aec/include \
+    $(LOCAL_PATH)/aecm/include \
+    $(LOCAL_PATH)/agc/include \
+    $(LOCAL_PATH)/ns/include \
     $(LOCAL_PATH)/../interface \
     $(LOCAL_PATH)/../.. \
     $(LOCAL_PATH)/../../common_audio/signal_processing/include \
@@ -81,7 +83,9 @@ LOCAL_SRC_FILES:= \
 
 # Flags passed to both C and C++ files.
 LOCAL_CFLAGS := \
-    $(MY_WEBRTC_COMMON_DEFS)
+    $(MY_WEBRTC_COMMON_DEFS) \
+    '-DWEBRTC_ANDROID_PLATFORM_BUILD' \
+    '-DWEBRTC_AUDIOPROC_DEBUG_DUMP'
 
 LOCAL_CFLAGS_arm := $(MY_WEBRTC_COMMON_DEFS_arm)
 LOCAL_CFLAGS_x86 := $(MY_WEBRTC_COMMON_DEFS_x86)
@@ -91,7 +95,7 @@ LOCAL_CFLAGS_x86_64 := $(MY_WEBRTC_COMMON_DEFS_x86_64)
 LOCAL_CFLAGS_mips64 := $(MY_WEBRTC_COMMON_DEFS_mips64)
 
 LOCAL_C_INCLUDES := \
-    $(LOCAL_PATH)/interface \
+    $(LOCAL_PATH)/include \
     $(LOCAL_PATH)/../interface \
     $(LOCAL_PATH)/../.. \
     $(LOCAL_PATH)/../../system_wrappers/interface \
@@ -127,12 +131,14 @@ LOCAL_CPP_EXTENSION := .cc
 LOCAL_SRC_FILES:= \
     $(call all-proto-files-under, test) \
     test/unit_test.cc \
-    test/testsupport/fileutils.cc
+    ../../test/testsupport/fileutils.cc
 
 # Flags passed to both C and C++ files.
 LOCAL_CFLAGS := \
     $(MY_WEBRTC_COMMON_DEFS) \
-    '-DWEBRTC_APM_UNIT_TEST_FIXED_PROFILE'
+    '-DWEBRTC_AUDIOPROC_FIXED_PROFILE' \
+    '-DWEBRTC_ANDROID_PLATFORM_BUILD' \
+    '-DWEBRTC_AUDIOPROC_DEBUG_DUMP'
 
 LOCAL_CFLAGS_arm := $(MY_WEBRTC_COMMON_DEFS_arm)
 LOCAL_CFLAGS_x86 := $(MY_WEBRTC_COMMON_DEFS_x86)
@@ -142,10 +148,10 @@ LOCAL_CFLAGS_x86_64 := $(MY_WEBRTC_COMMON_DEFS_x86_64)
 LOCAL_CFLAGS_mips64 := $(MY_WEBRTC_COMMON_DEFS_mips64)
 
 LOCAL_C_INCLUDES := \
-    $(LOCAL_PATH)/interface \
+    $(LOCAL_PATH)/include \
     $(LOCAL_PATH)/../interface \
     $(LOCAL_PATH)/../.. \
-    $(LOCAL_PATH)/test \
+    $(LOCAL_PATH)/../../../test \
     $(LOCAL_PATH)/../../system_wrappers/interface \
     $(LOCAL_PATH)/../../common_audio/signal_processing/include \
     external/protobuf/src

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+ *  Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
@@ -13,147 +13,78 @@
  * This header file includes the VAD API calls. Specific function calls are given below.
  */
 
-#ifndef WEBRTC_VAD_WEBRTC_VAD_H_
-#define WEBRTC_VAD_WEBRTC_VAD_H_
+#ifndef WEBRTC_COMMON_AUDIO_VAD_INCLUDE_WEBRTC_VAD_H_  // NOLINT
+#define WEBRTC_COMMON_AUDIO_VAD_INCLUDE_WEBRTC_VAD_H_
 
-#include "typedefs.h"
+#include "typedefs.h"  // NOLINT
 
 typedef struct WebRtcVadInst VadInst;
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-/****************************************************************************
- * WebRtcVad_get_version(...)
- *
- * This function returns the version number of the code.
- *
- * Output:
- *      - version       : Pointer to a buffer where the version info will
- *                        be stored.
- * Input:
- *      - size_bytes    : Size of the buffer.
- *
- */
-WebRtc_Word16 WebRtcVad_get_version(char *version, size_t size_bytes);
+// Creates an instance to the VAD structure.
+//
+// - handle [o] : Pointer to the VAD instance that should be created.
+//
+// returns      : 0 - (OK), -1 - (Error)
+int WebRtcVad_Create(VadInst** handle);
 
-/****************************************************************************
- * WebRtcVad_AssignSize(...) 
- *
- * This functions get the size needed for storing the instance for encoder
- * and decoder, respectively
- *
- * Input/Output:
- *      - size_in_bytes : Pointer to integer where the size is returned
- *
- * Return value         : 0
- */
-WebRtc_Word16 WebRtcVad_AssignSize(int *size_in_bytes);
+// Frees the dynamic memory of a specified VAD instance.
+//
+// - handle [i] : Pointer to VAD instance that should be freed.
+//
+// returns      : 0 - (OK), -1 - (NULL pointer in)
+int WebRtcVad_Free(VadInst* handle);
 
-/****************************************************************************
- * WebRtcVad_Assign(...) 
- *
- * This functions Assigns memory for the instances.
- *
- * Input:
- *        - vad_inst_addr :  Address to where to assign memory
- * Output:
- *        - vad_inst      :  Pointer to the instance that should be created
- *
- * Return value           :  0 - Ok
- *                          -1 - Error
- */
-WebRtc_Word16 WebRtcVad_Assign(VadInst **vad_inst, void *vad_inst_addr);
+// Initializes a VAD instance.
+//
+// - handle [i/o] : Instance that should be initialized.
+//
+// returns        : 0 - (OK),
+//                 -1 - (NULL pointer or Default mode could not be set).
+int WebRtcVad_Init(VadInst* handle);
 
-/****************************************************************************
- * WebRtcVad_Create(...)
- *
- * This function creates an instance to the VAD structure
- *
- * Input:
- *      - vad_inst      : Pointer to VAD instance that should be created
- *
- * Output:
- *      - vad_inst      : Pointer to created VAD instance
- *
- * Return value         :  0 - Ok
- *                        -1 - Error
- */
-WebRtc_Word16 WebRtcVad_Create(VadInst **vad_inst);
+// Sets the VAD operating mode. A more aggressive (higher mode) VAD is more
+// restrictive in reporting speech. Put in other words the probability of being
+// speech when the VAD returns 1 is increased with increasing mode. As a
+// consequence also the missed detection rate goes up.
+//
+// - handle [i/o] : VAD instance.
+// - mode   [i]   : Aggressiveness mode (0, 1, 2, or 3).
+//
+// returns        : 0 - (OK),
+//                 -1 - (NULL pointer, mode could not be set or the VAD instance
+//                       has not been initialized).
+int WebRtcVad_set_mode(VadInst* handle, int mode);
 
-/****************************************************************************
- * WebRtcVad_Free(...)
- *
- * This function frees the dynamic memory of a specified VAD instance
- *
- * Input:
- *      - vad_inst      : Pointer to VAD instance that should be freed
- *
- * Return value         :  0 - Ok
- *                        -1 - Error
- */
-WebRtc_Word16 WebRtcVad_Free(VadInst *vad_inst);
+// Calculates a VAD decision for the |audio_frame|. For valid sampling rates
+// frame lengths, see the description of WebRtcVad_ValidRatesAndFrameLengths().
+//
+// - handle       [i/o] : VAD Instance. Needs to be initialized by
+//                        WebRtcVad_Init() before call.
+// - fs           [i]   : Sampling frequency (Hz): 8000, 16000, or 32000
+// - audio_frame  [i]   : Audio frame buffer.
+// - frame_length [i]   : Length of audio frame buffer in number of samples.
+//
+// returns              : 1 - (Active Voice),
+//                        0 - (Non-active Voice),
+//                       -1 - (Error)
+int WebRtcVad_Process(VadInst* handle, int fs, int16_t* audio_frame,
+                      int frame_length);
 
-/****************************************************************************
- * WebRtcVad_Init(...)
- *
- * This function initializes a VAD instance
- *
- * Input:
- *      - vad_inst      : Instance that should be initialized
- *
- * Output:
- *      - vad_inst      : Initialized instance
- *
- * Return value         :  0 - Ok
- *                        -1 - Error
- */
-WebRtc_Word16 WebRtcVad_Init(VadInst *vad_inst);
-
-/****************************************************************************
- * WebRtcVad_set_mode(...)
- *
- * This function initializes a VAD instance
- *
- * Input:
- *      - vad_inst      : VAD instance
- *      - mode          : Aggressiveness setting (0, 1, 2, or 3) 
- *
- * Output:
- *      - vad_inst      : Initialized instance
- *
- * Return value         :  0 - Ok
- *                        -1 - Error
- */
-WebRtc_Word16 WebRtcVad_set_mode(VadInst *vad_inst, WebRtc_Word16 mode);
-
-/****************************************************************************
- * WebRtcVad_Process(...)
- * 
- * This functions does a VAD for the inserted speech frame
- *
- * Input
- *        - vad_inst     : VAD Instance. Needs to be initiated before call.
- *        - fs           : sampling frequency (Hz): 8000, 16000, or 32000
- *        - speech_frame : Pointer to speech frame buffer
- *        - frame_length : Length of speech frame buffer in number of samples
- *
- * Output:
- *        - vad_inst     : Updated VAD instance
- *
- * Return value          :  1 - Active Voice
- *                          0 - Non-active Voice
- *                         -1 - Error
- */
-WebRtc_Word16 WebRtcVad_Process(VadInst *vad_inst,
-                                WebRtc_Word16 fs,
-                                WebRtc_Word16 *speech_frame,
-                                WebRtc_Word16 frame_length);
+// Checks for valid combinations of |rate| and |frame_length|. We support 10,
+// 20 and 30 ms frames and the rates 8000, 16000 and 32000 Hz.
+//
+// - rate         [i] : Sampling frequency (Hz).
+// - frame_length [i] : Speech frame buffer length in number of samples.
+//
+// returns            : 0 - (valid combination), -1 - (invalid combination)
+int WebRtcVad_ValidRateAndFrameLength(int rate, int frame_length);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // WEBRTC_VAD_WEBRTC_VAD_H_
+#endif  // WEBRTC_COMMON_AUDIO_VAD_INCLUDE_WEBRTC_VAD_H_  // NOLINT

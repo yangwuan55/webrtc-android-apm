@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+ *  Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
@@ -20,13 +20,12 @@
 // Input:
 //      - handle        : Pointer to the delay estimation instance.
 //
-int WebRtc_FreeDelayEstimator(void* handle);
+void WebRtc_FreeDelayEstimator(void* handle);
 
 // Allocates the memory needed by the delay estimation. The memory needs to be
 // initialized separately through WebRtc_InitDelayEstimator(...).
 //
 // Inputs:
-//      - handle        : Instance that should be created.
 //      - spectrum_size : Size of the spectrum used both in far-end and
 //                        near-end. Used to allocate memory for spectrum
 //                        specific buffers.
@@ -42,15 +41,15 @@ int WebRtc_FreeDelayEstimator(void* handle);
 //                        This also represents the minimum delay which can be
 //                        estimated.
 //
-// Output:
-//      - handle        : Created instance.
+// Return value:
+//      - void*         : Created |handle|. If the memory can't be allocated or
+//                        if any of the input parameters are invalid NULL is
+//                        returned.
 //
-int WebRtc_CreateDelayEstimator(void** handle,
-                                int spectrum_size,
-                                int max_delay,
-                                int lookahead);
+void* WebRtc_CreateDelayEstimator(int spectrum_size, int max_delay,
+                                  int lookahead);
 
-// Initializes the delay estimation instance created with
+// Initializes the delay estimation instance returned by
 // WebRtc_CreateDelayEstimator(...)
 // Input:
 //      - handle        : Pointer to the delay estimation instance.

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+ *  Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
@@ -339,8 +339,11 @@ WebRtc_Word32 WebRtcAecm_Process(void *aecmInst, const WebRtc_Word16 *nearendNoi
     {
         if (nearendClean == NULL)
         {
-            memcpy(out, nearendNoisy, sizeof(short) * nrOfSamples);
-        } else
+            if (out != nearendNoisy)
+            {
+                memcpy(out, nearendNoisy, sizeof(short) * nrOfSamples);
+            }
+        } else if (out != nearendClean)
         {
             memcpy(out, nearendClean, sizeof(short) * nrOfSamples);
         }
@@ -647,10 +650,12 @@ WebRtc_Word32 WebRtcAecm_InitEchoPath(void* aecmInst,
     aecmob_t *aecm = aecmInst;
     const WebRtc_Word16* echo_path_ptr = echo_path;
 
-    if ((aecm == NULL) || (echo_path == NULL))
-    {
-        aecm->lastError = AECM_NULL_POINTER_ERROR;
-        return -1;
+    if (aecmInst == NULL) {
+      return -1;
+    }
+    if (echo_path == NULL) {
+      aecm->lastError = AECM_NULL_POINTER_ERROR;
+      return -1;
     }
     if (size_bytes != WebRtcAecm_echo_path_size_bytes())
     {
@@ -676,10 +681,12 @@ WebRtc_Word32 WebRtcAecm_GetEchoPath(void* aecmInst,
     aecmob_t *aecm = aecmInst;
     WebRtc_Word16* echo_path_ptr = echo_path;
 
-    if ((aecm == NULL) || (echo_path == NULL))
-    {
-        aecm->lastError = AECM_NULL_POINTER_ERROR;
-        return -1;
+    if (aecmInst == NULL) {
+      return -1;
+    }
+    if (echo_path == NULL) {
+      aecm->lastError = AECM_NULL_POINTER_ERROR;
+      return -1;
     }
     if (size_bytes != WebRtcAecm_echo_path_size_bytes())
     {
@@ -700,25 +707,6 @@ WebRtc_Word32 WebRtcAecm_GetEchoPath(void* aecmInst,
 size_t WebRtcAecm_echo_path_size_bytes()
 {
     return (PART_LEN1 * sizeof(WebRtc_Word16));
-}
-
-WebRtc_Word32 WebRtcAecm_get_version(WebRtc_Word8 *versionStr, WebRtc_Word16 len)
-{
-    const char version[] = "AECM 1.2.0";
-    const short versionLen = (short)strlen(version) + 1; // +1 for null-termination
-
-    if (versionStr == NULL)
-    {
-        return -1;
-    }
-
-    if (versionLen > len)
-    {
-        return -1;
-    }
-
-    strncpy(versionStr, version, versionLen);
-    return 0;
 }
 
 WebRtc_Word32 WebRtcAecm_get_error_code(void *aecmInst)

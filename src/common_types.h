@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+ *  Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
@@ -13,17 +13,25 @@
 
 #include "typedefs.h"
 
+#if defined(_MSC_VER)
+// Disable "new behavior: elements of array will be default initialized"
+// warning. Affects OverUseDetectorOptions.
+#pragma warning(disable:4351)
+#endif
+
 #ifdef WEBRTC_EXPORT
-    #define WEBRTC_DLLEXPORT _declspec(dllexport)
+#define WEBRTC_DLLEXPORT _declspec(dllexport)
 #elif WEBRTC_DLL
-    #define WEBRTC_DLLEXPORT _declspec(dllimport)
+#define WEBRTC_DLLEXPORT _declspec(dllimport)
 #else
-    #define WEBRTC_DLLEXPORT
+#define WEBRTC_DLLEXPORT
 #endif
 
 #ifndef NULL
-    #define NULL 0
+#define NULL 0
 #endif
+
+#define RTP_PAYLOAD_NAME_SIZE 32
 
 namespace webrtc {
 
@@ -147,32 +155,61 @@ enum SecurityLevels
     kEncryptionAndAuthentication     = 3
 };
 
+// Interface for encrypting and decrypting regular data and rtp/rtcp packets.
+// Implement this interface if you wish to provide an encryption scheme to
+// the voice or video engines.
 class Encryption
 {
 public:
+    // Encrypt the given data.
+    //
+    // Args:
+    //   channel: The channel to encrypt data for.
+    //   in_data: The data to encrypt. This data is bytes_in bytes long.
+    //   out_data: The buffer to write the encrypted data to. You may write more
+    //       bytes of encrypted data than what you got as input, up to a maximum
+    //       of webrtc::kViEMaxMtu if you are encrypting in the video engine, or
+    //       webrtc::kVoiceEngineMaxIpPacketSizeBytes for the voice engine.
+    //   bytes_in: The number of bytes in the input buffer.
+    //   bytes_out: The number of bytes written in out_data.
     virtual void encrypt(
-        int channel_no,
+        int channel,
         unsigned char* in_data,
         unsigned char* out_data,
         int bytes_in,
         int* bytes_out) = 0;
 
+    // Decrypts the given data. This should reverse the effects of encrypt().
+    //
+    // Args:
+    //   channel_no: The channel to decrypt data for.
+    //   in_data: The data to decrypt. This data is bytes_in bytes long.
+    //   out_data: The buffer to write the decrypted data to. You may write more
+    //       bytes of decrypted data than what you got as input, up to a maximum
+    //       of webrtc::kViEMaxMtu if you are encrypting in the video engine, or
+    //       webrtc::kVoiceEngineMaxIpPacketSizeBytes for the voice engine.
+    //   bytes_in: The number of bytes in the input buffer.
+    //   bytes_out: The number of bytes written in out_data.
     virtual void decrypt(
-        int channel_no,
+        int channel,
         unsigned char* in_data,
         unsigned char* out_data,
         int bytes_in,
         int* bytes_out) = 0;
 
+    // Encrypts a RTCP packet. Otherwise, this method has the same contract as
+    // encrypt().
     virtual void encrypt_rtcp(
-        int channel_no,
+        int channel,
         unsigned char* in_data,
         unsigned char* out_data,
         int bytes_in,
         int* bytes_out) = 0;
 
+    // Decrypts a RTCP packet. Otherwise, this method has the same contract as
+    // decrypt().
     virtual void decrypt_rtcp(
-        int channel_no,
+        int channel,
         unsigned char* in_data,
         unsigned char* out_data,
         int bytes_in,
@@ -203,7 +240,7 @@ protected:
 struct CodecInst
 {
     int pltype;
-    char plname[32];
+    char plname[RTP_PAYLOAD_NAME_SIZE];
     int plfreq;
     int pacsize;
     int channels;
@@ -271,6 +308,8 @@ struct NetworkStatistics           // NETEQ statistics
     int meanWaitingTimeMs;
     // median packet waiting time in the jitter buffer (ms)
     int medianWaitingTimeMs;
+    // min packet waiting time in the jitter buffer (ms)
+    int minWaitingTimeMs;
     // max packet waiting time in the jitter buffer (ms)
     int maxWaitingTimeMs;
 };
@@ -327,7 +366,7 @@ enum AgcModes                  // type of Automatic Gain Control
     // scaling takes place in the digital domain (e.g. for conference servers
     // and embedded devices)
     kAgcAdaptiveDigital,
-    // can be used on embedded devices where the the capture signal is level
+    // can be used on embedded devices where the capture signal level
     // is predictable
     kAgcFixedDigital
 };
@@ -447,19 +486,6 @@ enum { kPayloadNameSize = 32};
 enum { kMaxSimulcastStreams = 4};
 enum { kMaxTemporalStreams = 4};
 
-// H.263 specific
-struct VideoCodecH263
-{
-    char quality;
-};
-
-// H.264 specific
-enum H264Packetization
-{
-    kH264SingleMode         = 0,
-    kH264NonInterleavedMode = 1
-};
-
 enum VideoCodecComplexity
 {
     kComplexityNormal = 0,
@@ -485,20 +511,6 @@ enum VP8ResilienceMode {
                      // within a frame.
 };
 
-struct VideoCodecH264
-{
-    H264Packetization          packetization;
-    VideoCodecComplexity       complexity;
-    VideoCodecProfile          profile;
-    char                       level;
-    char                       quality;
-
-    bool                       useFMO;
-
-    unsigned char              configParameters[kConfigParameterSize];
-    unsigned char              configParametersSize;
-};
-
 // VP8 specific
 struct VideoCodecVP8
 {
@@ -507,14 +519,10 @@ struct VideoCodecVP8
     VideoCodecComplexity complexity;
     VP8ResilienceMode    resilience;
     unsigned char        numberOfTemporalLayers;
-};
-
-// MPEG-4 specific
-struct VideoCodecMPEG4
-{
-    unsigned char   configParameters[kConfigParameterSize];
-    unsigned char   configParametersSize;
-    char            level;
+    bool                 denoisingOn;
+    bool                 errorConcealmentOn;
+    bool                 automaticResizeOn;
+    bool                 frameDroppingOn;
 };
 
 // Unknown specific
@@ -525,10 +533,7 @@ struct VideoCodecGeneric
 // Video codec types
 enum VideoCodecType
 {
-    kVideoCodecH263,
-    kVideoCodecH264,
     kVideoCodecVP8,
-    kVideoCodecMPEG4,
     kVideoCodecI420,
     kVideoCodecRED,
     kVideoCodecULPFEC,
@@ -537,17 +542,13 @@ enum VideoCodecType
 
 union VideoCodecUnion
 {
-    VideoCodecH263      H263;
-    VideoCodecH264      H264;
     VideoCodecVP8       VP8;
-    VideoCodecMPEG4     MPEG4;
     VideoCodecGeneric   Generic;
 };
 
-/*
-*  Simulcast is when the same stream is encoded multiple times with different
-*  settings such as resolution.  
-*/
+
+// Simulcast is when the same stream is encoded multiple times with different
+// settings such as resolution.
 struct SimulcastStream
 {
     unsigned short      width;
@@ -577,6 +578,33 @@ struct VideoCodec
     unsigned int        qpMax;
     unsigned char       numberOfSimulcastStreams;
     SimulcastStream     simulcastStream[kMaxSimulcastStreams];
+};
+
+// Bandwidth over-use detector options.  These are used to drive
+// experimentation with bandwidth estimation parameters.
+// See modules/remote_bitrate_estimator/overuse_detector.h
+struct OverUseDetectorOptions {
+  OverUseDetectorOptions()
+      : initial_slope(8.0/512.0),
+        initial_offset(0),
+        initial_e(),
+        initial_process_noise(),
+        initial_avg_noise(0.0),
+        initial_var_noise(500),
+        initial_threshold(25.0) {
+    initial_e[0][0] = 100;
+    initial_e[1][1] = 1e-1;
+    initial_e[0][1] = initial_e[1][0] = 0;
+    initial_process_noise[0] = 1e-10;
+    initial_process_noise[1] = 1e-2;
+  }
+  double initial_slope;
+  double initial_offset;
+  double initial_e[2][2];
+  double initial_process_noise[2];
+  double initial_avg_noise;
+  double initial_var_noise;
+  double initial_threshold;
 };
 }  // namespace webrtc
 #endif  // WEBRTC_COMMON_TYPES_H
