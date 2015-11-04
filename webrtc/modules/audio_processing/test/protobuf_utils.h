@@ -11,7 +11,11 @@
 #ifndef WEBRTC_MODULES_AUDIO_PROCESSING_TEST_PROTOBUF_UTILS_H_
 #define WEBRTC_MODULES_AUDIO_PROCESSING_TEST_PROTOBUF_UTILS_H_
 
-#include "webrtc/audio_processing/debug.pb.h"
+#ifdef WEBRTC_ANDROID_PLATFORM_BUILD
+#include "external/webrtc/webrtc/modules/audio_processing/debug.pb.h"
+#else
+#include "webrtc/modules/audio_processing/debug.pb.h"
+#endif
 #include "webrtc/base/scoped_ptr.h"
 
 namespace webrtc {

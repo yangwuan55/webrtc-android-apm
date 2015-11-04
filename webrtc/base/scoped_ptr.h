@@ -131,7 +131,7 @@ struct DefaultDeleter {
     // cannot convert to T*.
     enum { T_must_be_complete = sizeof(T) };
     enum { U_must_be_complete = sizeof(U) };
-    static_assert(rtc::is_convertible<U*, T*>::value,
+    static_assert((rtc::is_convertible<U*, T*>::value),
                   "U* must implicitly convert to T*");
   }
   inline void operator()(T* ptr) const {

@@ -21,6 +21,11 @@ Scott McMurray
 #include <vector>
 #include "webrtc/system_wrappers/source/spreadsortlib/constants.hpp"
 
+#ifdef getchar
+// This file should not use getchar as a template parameter name.
+#undef getchar
+#endif
+
 namespace boost {
   namespace detail {
   	//This only works on unsigned data types

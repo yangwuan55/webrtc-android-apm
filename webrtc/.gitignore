@@ -1,2 +1,1 @@
 # This file is for projects that checkout webrtc/ directly (e.g. Chromium).
-*.mk
