@@ -9,6 +9,7 @@
 # These defines will apply to all source files
 # Think again before changing it
 MY_WEBRTC_COMMON_DEFS := \
+    '-DWEBRTC_POSIX' \
     '-DWEBRTC_LINUX' \
     '-DWEBRTC_THREAD_RR' \
     '-DWEBRTC_CLOCK_TYPE_REALTIME' \
