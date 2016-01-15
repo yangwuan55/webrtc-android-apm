@@ -29,6 +29,7 @@ package org.webrtc;
 import android.content.Context;
 import android.hardware.Camera;
 
+import org.webrtc.VideoCapturerAndroidTestFixtures;
 import org.webrtc.CameraEnumerationAndroid.CaptureFormat;
 import org.webrtc.VideoRenderer.I420Frame;
 
@@ -42,14 +43,30 @@ public class VideoCapturerAndroidTestFixtures {
   static class RendererCallbacks implements VideoRenderer.Callbacks {
     private int framesRendered = 0;
     private Object frameLock = 0;
+    private int width = 0;
+    private int height = 0;
 
     @Override
     public void renderFrame(I420Frame frame) {
       synchronized (frameLock) {
         ++framesRendered;
+        width = frame.rotatedWidth();
+        height = frame.rotatedHeight();
         frameLock.notify();
       }
       VideoRenderer.renderFrameDone(frame);
+    }
+
+    public int frameWidth() {
+      synchronized (frameLock) {
+        return width;
+      }
+    }
+
+    public int frameHeight() {
+      synchronized (frameLock) {
+        return height;
+      }
     }
 
     public int WaitForNextFrameToRender() throws InterruptedException {
@@ -102,11 +119,11 @@ public class VideoCapturerAndroidTestFixtures {
     }
 
     @Override
-    public void onByteBufferFrameCaptured(byte[] frame, int length, int width, int height,
-        int rotation, long timeStamp) {
+    public void onByteBufferFrameCaptured(byte[] frame, int width, int height, int rotation,
+        long timeStamp) {
       synchronized (frameLock) {
         ++framesCaptured;
-        frameSize = length;
+        frameSize = frame.length;
         frameWidth = width;
         frameHeight = height;
         timestamps.add(timeStamp);
@@ -115,7 +132,8 @@ public class VideoCapturerAndroidTestFixtures {
     }
     @Override
     public void onTextureFrameCaptured(
-        int width, int height, int oesTextureId, float[] transformMatrix, long timeStamp) {
+        int width, int height, int oesTextureId, float[] transformMatrix, int rotation,
+        long timeStamp) {
       synchronized (frameLock) {
         ++framesCaptured;
         frameWidth = width;
@@ -174,9 +192,20 @@ public class VideoCapturerAndroidTestFixtures {
       VideoCapturerAndroid.CameraEventsHandler {
     public boolean onCameraOpeningCalled;
     public boolean onFirstFrameAvailableCalled;
+    public final Object onCameraFreezedLock = new Object();
+    private String onCameraFreezedDescription;
 
     @Override
-    public void onCameraError(String errorDescription) { }
+    public void onCameraError(String errorDescription) {
+    }
+
+    @Override
+    public void onCameraFreezed(String errorDescription) {
+      synchronized (onCameraFreezedLock) {
+        onCameraFreezedDescription = errorDescription;
+        onCameraFreezedLock.notifyAll();
+      }
+    }
 
     @Override
     public void onCameraOpening(int cameraId) {
@@ -190,6 +219,13 @@ public class VideoCapturerAndroidTestFixtures {
 
     @Override
     public void onCameraClosed() { }
+
+    public String WaitForCameraFreezed() throws InterruptedException {
+      synchronized (onCameraFreezedLock) {
+        onCameraFreezedLock.wait();
+        return onCameraFreezedDescription;
+      }
+    }
   }
 
   static public CameraEvents createCameraEvents() {
@@ -275,8 +311,8 @@ public class VideoCapturerAndroidTestFixtures {
     assertTrue(observer.WaitForCapturerToStart());
     observer.WaitForNextCapturedFrame();
     capturer.stopCapture();
-    for (long timeStamp : observer.getCopyAndResetListOftimeStamps()) {
-      capturer.returnBuffer(timeStamp);
+    if (capturer.isCapturingToTexture()) {
+      capturer.surfaceHelper.returnTextureFrame();
     }
     capturer.dispose();
 
@@ -296,9 +332,10 @@ public class VideoCapturerAndroidTestFixtures {
     // Make sure camera is started and then stop it.
     assertTrue(observer.WaitForCapturerToStart());
     capturer.stopCapture();
-    for (long timeStamp : observer.getCopyAndResetListOftimeStamps()) {
-      capturer.returnBuffer(timeStamp);
+    if (capturer.isCapturingToTexture()) {
+      capturer.surfaceHelper.returnTextureFrame();
     }
+
     // We can't change |capturer| at this point, but we should not crash.
     capturer.switchCamera(null);
     capturer.onOutputFormatRequest(640, 480, 15);
@@ -357,15 +394,88 @@ public class VideoCapturerAndroidTestFixtures {
       if (capturer.isCapturingToTexture()) {
         assertEquals(0, observer.frameSize());
       } else {
-        assertEquals(format.frameSize(), observer.frameSize());
+        assertTrue(format.frameSize() <= observer.frameSize());
       }
       capturer.stopCapture();
-      for (long timestamp : observer.getCopyAndResetListOftimeStamps()) {
-        capturer.returnBuffer(timestamp);
+      if (capturer.isCapturingToTexture()) {
+        capturer.surfaceHelper.returnTextureFrame();
       }
     }
     capturer.dispose();
     assertTrue(capturer.isReleased());
+  }
+
+  static void waitUntilIdle(VideoCapturerAndroid capturer) throws InterruptedException {
+    final CountDownLatch barrier = new CountDownLatch(1);
+    capturer.getCameraThreadHandler().post(new Runnable() {
+        @Override public void run() {
+          barrier.countDown();
+        }
+    });
+    barrier.await();
+  }
+
+  static public void startWhileCameraIsAlreadyOpen(
+      VideoCapturerAndroid capturer, Context appContext) throws InterruptedException {
+    Camera camera = Camera.open(capturer.getCurrentCameraId());
+
+    final List<CaptureFormat> formats = capturer.getSupportedFormats();
+    final CameraEnumerationAndroid.CaptureFormat format = formats.get(0);
+
+    final FakeCapturerObserver observer = new FakeCapturerObserver();
+    capturer.startCapture(format.width, format.height, format.maxFramerate,
+        appContext, observer);
+
+    if (android.os.Build.VERSION.SDK_INT > android.os.Build.VERSION_CODES.LOLLIPOP_MR1) {
+      // The first opened camera client will be evicted.
+      assertTrue(observer.WaitForCapturerToStart());
+      capturer.stopCapture();
+    } else {
+      assertFalse(observer.WaitForCapturerToStart());
+    }
+
+    capturer.dispose();
+    camera.release();
+  }
+
+  static public void startWhileCameraIsAlreadyOpenAndCloseCamera(
+      VideoCapturerAndroid capturer, Context appContext) throws InterruptedException {
+    Camera camera = Camera.open(capturer.getCurrentCameraId());
+
+    final List<CaptureFormat> formats = capturer.getSupportedFormats();
+    final CameraEnumerationAndroid.CaptureFormat format = formats.get(0);
+
+    final FakeCapturerObserver observer = new FakeCapturerObserver();
+    capturer.startCapture(format.width, format.height, format.maxFramerate,
+        appContext, observer);
+    waitUntilIdle(capturer);
+
+    camera.release();
+
+    // Make sure camera is started and first frame is received and then stop it.
+    assertTrue(observer.WaitForCapturerToStart());
+    observer.WaitForNextCapturedFrame();
+    capturer.stopCapture();
+    if (capturer.isCapturingToTexture()) {
+      capturer.surfaceHelper.returnTextureFrame();
+    }
+    capturer.dispose();
+    assertTrue(capturer.isReleased());
+  }
+
+  static public void startWhileCameraIsAlreadyOpenAndStop(
+      VideoCapturerAndroid capturer, Context appContext) throws InterruptedException {
+    Camera camera = Camera.open(capturer.getCurrentCameraId());
+    final List<CaptureFormat> formats = capturer.getSupportedFormats();
+    final CameraEnumerationAndroid.CaptureFormat format = formats.get(0);
+
+    final FakeCapturerObserver observer = new FakeCapturerObserver();
+    capturer.startCapture(format.width, format.height, format.maxFramerate,
+        appContext, observer);
+    capturer.stopCapture();
+    capturer.dispose();
+    assertTrue(capturer.isReleased());
+    camera.release();
   }
 
   static public void returnBufferLate(VideoCapturerAndroid capturer,
@@ -387,9 +497,8 @@ public class VideoCapturerAndroidTestFixtures {
     capturer.startCapture(format.width, format.height, format.maxFramerate,
         appContext, observer);
     observer.WaitForCapturerToStart();
-
-    for (Long timeStamp : listOftimestamps) {
-      capturer.returnBuffer(timeStamp);
+    if (capturer.isCapturingToTexture()) {
+      capturer.surfaceHelper.returnTextureFrame();
     }
 
     observer.WaitForNextCapturedFrame();
@@ -397,9 +506,10 @@ public class VideoCapturerAndroidTestFixtures {
 
     listOftimestamps = observer.getCopyAndResetListOftimeStamps();
     assertTrue(listOftimestamps.size() >= 1);
-    for (Long timeStamp : listOftimestamps) {
-      capturer.returnBuffer(timeStamp);
+    if (capturer.isCapturingToTexture()) {
+      capturer.surfaceHelper.returnTextureFrame();
     }
+
     capturer.dispose();
     assertTrue(capturer.isReleased());
   }
@@ -410,6 +520,7 @@ public class VideoCapturerAndroidTestFixtures {
     final VideoSource source = factory.createVideoSource(capturer, new MediaConstraints());
     final VideoTrack track = factory.createVideoTrack("dummy", source);
     final FakeAsyncRenderer renderer = new FakeAsyncRenderer();
+
     track.addRenderer(new VideoRenderer(renderer));
     // Wait for at least one frame that has not been returned.
     assertFalse(renderer.waitForPendingFrames().isEmpty());
@@ -420,9 +531,7 @@ public class VideoCapturerAndroidTestFixtures {
     track.dispose();
     source.dispose();
     factory.dispose();
-
-    // The pending frames should keep the JNI parts and |capturer| alive.
-    assertFalse(capturer.isReleased());
+    assertTrue(capturer.isReleased());
 
     // Return the frame(s), on a different thread out of spite.
     final List<I420Frame> pendingFrames = renderer.waitForPendingFrames();
@@ -436,8 +545,71 @@ public class VideoCapturerAndroidTestFixtures {
     });
     returnThread.start();
     returnThread.join();
+  }
 
-    // Check that frames have successfully returned. This will cause |capturer| to be released.
+  static public void cameraFreezedEventOnBufferStarvationUsingTextures(
+      VideoCapturerAndroid capturer,
+      CameraEvents events, Context appContext) throws InterruptedException {
+    assertTrue("Not capturing to textures.", capturer.isCapturingToTexture());
+
+    final List<CaptureFormat> formats = capturer.getSupportedFormats();
+    final CameraEnumerationAndroid.CaptureFormat format = formats.get(0);
+
+    final FakeCapturerObserver observer = new FakeCapturerObserver();
+    capturer.startCapture(format.width, format.height, format.maxFramerate,
+        appContext, observer);
+    // Make sure camera is started.
+    assertTrue(observer.WaitForCapturerToStart());
+    // Since we don't return the buffer, we should get a starvation message if we are
+    // capturing to a texture.
+    assertEquals("Camera failure. Client must return video buffers.",
+        events.WaitForCameraFreezed());
+
+    capturer.stopCapture();
+    if (capturer.isCapturingToTexture()) {
+      capturer.surfaceHelper.returnTextureFrame();
+    }
+
+    capturer.dispose();
     assertTrue(capturer.isReleased());
   }
+
+  static public void scaleCameraOutput(VideoCapturerAndroid capturer) throws InterruptedException {
+    PeerConnectionFactory factory = new PeerConnectionFactory();
+    VideoSource source =
+        factory.createVideoSource(capturer, new MediaConstraints());
+    VideoTrack track = factory.createVideoTrack("dummy", source);
+    RendererCallbacks renderer = new RendererCallbacks();
+    track.addRenderer(new VideoRenderer(renderer));
+    assertTrue(renderer.WaitForNextFrameToRender() > 0);
+
+    final int startWidth = renderer.frameWidth();
+    final int startHeight = renderer.frameHeight();
+    final int frameRate = 30;
+    final int scaledWidth = startWidth / 2;
+    final int scaledHeight = startHeight / 2;
+
+    // Request the captured frames to be scaled.
+    capturer.onOutputFormatRequest(scaledWidth, scaledHeight, frameRate);
+
+    boolean gotExpectedResolution = false;
+    int numberOfInspectedFrames = 0;
+
+    do {
+      renderer.WaitForNextFrameToRender();
+      ++numberOfInspectedFrames;
+
+      gotExpectedResolution = (renderer.frameWidth() == scaledWidth
+          &&  renderer.frameHeight() == scaledHeight);
+    } while (!gotExpectedResolution && numberOfInspectedFrames < 30);
+
+    source.stop();
+    track.dispose();
+    source.dispose();
+    factory.dispose();
+    assertTrue(capturer.isReleased());
+
+    assertTrue(gotExpectedResolution);
+  }
+
 }

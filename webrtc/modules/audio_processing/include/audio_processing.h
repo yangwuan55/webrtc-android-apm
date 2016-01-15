@@ -65,6 +65,7 @@ class VoiceDetection;
 struct ExtendedFilter {
   ExtendedFilter() : enabled(false) {}
   explicit ExtendedFilter(bool enabled) : enabled(enabled) {}
+  static const ConfigOptionID identifier = ConfigOptionID::kExtendedFilter;
   bool enabled;
 };
 
@@ -76,6 +77,7 @@ struct ExtendedFilter {
 struct DelayAgnostic {
   DelayAgnostic() : enabled(false) {}
   explicit DelayAgnostic(bool enabled) : enabled(enabled) {}
+  static const ConfigOptionID identifier = ConfigOptionID::kDelayAgnostic;
   bool enabled;
 };
 
@@ -96,6 +98,7 @@ struct ExperimentalAgc {
       : enabled(enabled), startup_min_volume(kAgcStartupMinVolume) {}
   ExperimentalAgc(bool enabled, int startup_min_volume)
       : enabled(enabled), startup_min_volume(startup_min_volume) {}
+  static const ConfigOptionID identifier = ConfigOptionID::kExperimentalAgc;
   bool enabled;
   int startup_min_volume;
 };
@@ -105,6 +108,7 @@ struct ExperimentalAgc {
 struct ExperimentalNs {
   ExperimentalNs() : enabled(false) {}
   explicit ExperimentalNs(bool enabled) : enabled(enabled) {}
+  static const ConfigOptionID identifier = ConfigOptionID::kExperimentalNs;
   bool enabled;
 };
 
@@ -127,6 +131,7 @@ struct Beamforming {
       : enabled(enabled),
         array_geometry(array_geometry),
         target_direction(target_direction) {}
+  static const ConfigOptionID identifier = ConfigOptionID::kBeamforming;
   const bool enabled;
   const std::vector<Point> array_geometry;
   const SphericalPointf target_direction;
@@ -141,6 +146,7 @@ struct Beamforming {
 struct Intelligibility {
   Intelligibility() : enabled(false) {}
   explicit Intelligibility(bool enabled) : enabled(enabled) {}
+  static const ConfigOptionID identifier = ConfigOptionID::kIntelligibility;
   bool enabled;
 };
 
@@ -279,13 +285,18 @@ class AudioProcessing {
   // ensures the options are applied immediately.
   virtual void SetExtraOptions(const Config& config) = 0;
 
+  // TODO(peah): Remove after voice engine no longer requires it to resample
+  // the reverse stream to the forward rate.
+  virtual int input_sample_rate_hz() const = 0;
+
   // TODO(ajm): Only intended for internal use. Make private and friend the
   // necessary classes?
   virtual int proc_sample_rate_hz() const = 0;
   virtual int proc_split_sample_rate_hz() const = 0;
-  virtual int num_input_channels() const = 0;
-  virtual int num_output_channels() const = 0;
-  virtual int num_reverse_channels() const = 0;
+  virtual size_t num_input_channels() const = 0;
+  virtual size_t num_proc_channels() const = 0;
+  virtual size_t num_output_channels() const = 0;
+  virtual size_t num_reverse_channels() const = 0;
 
   // Set to true when the output of AudioProcessing will be muted or in some
   // other way not used. Ideally, the captured audio would still be processed,
@@ -497,7 +508,7 @@ class StreamConfig {
   //               is true, the last channel in any corresponding list of
   //               channels is the keyboard channel.
   StreamConfig(int sample_rate_hz = 0,
-               int num_channels = 0,
+               size_t num_channels = 0,
                bool has_keyboard = false)
       : sample_rate_hz_(sample_rate_hz),
         num_channels_(num_channels),
@@ -508,14 +519,14 @@ class StreamConfig {
     sample_rate_hz_ = value;
     num_frames_ = calculate_frames(value);
   }
-  void set_num_channels(int value) { num_channels_ = value; }
+  void set_num_channels(size_t value) { num_channels_ = value; }
   void set_has_keyboard(bool value) { has_keyboard_ = value; }
 
   int sample_rate_hz() const { return sample_rate_hz_; }
 
   // The number of channels in the stream, not including the keyboard channel if
   // present.
-  int num_channels() const { return num_channels_; }
+  size_t num_channels() const { return num_channels_; }
 
   bool has_keyboard() const { return has_keyboard_; }
   size_t num_frames() const { return num_frames_; }
@@ -536,7 +547,7 @@ class StreamConfig {
   }
 
   int sample_rate_hz_;
-  int num_channels_;
+  size_t num_channels_;
   bool has_keyboard_;
   size_t num_frames_;
 };

@@ -21,6 +21,7 @@ LOCAL_SRC_FILES := \
     checks.cc \
     criticalsection.cc \
     event.cc \
+    event_tracer.cc \
     logging.cc \
     platform_file.cc \
     platform_thread.cc \

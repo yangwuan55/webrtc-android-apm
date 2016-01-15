@@ -14,6 +14,100 @@ import subprocess
 import sys
 
 
+# Directories that will be scanned by cpplint by the presubmit script.
+CPPLINT_DIRS = [
+  'webrtc/audio',
+  'webrtc/call',
+  'webrtc/common_video',
+  'webrtc/examples',
+  'webrtc/modules/remote_bitrate_estimator',
+  'webrtc/modules/rtp_rtcp',
+  'webrtc/modules/video_coding',
+  'webrtc/modules/video_processing',
+  'webrtc/sound',
+  'webrtc/tools',
+  'webrtc/video',
+]
+
+# List of directories of "supported" native APIs. That means changes to headers
+# will be done in a compatible way following this scheme:
+# 1. Non-breaking changes are made.
+# 2. The old APIs as marked as deprecated (with comments).
+# 3. Deprecation is announced to discuss-webrtc@googlegroups.com and
+#    webrtc-users@google.com (internal list).
+# 4. (later) The deprecated APIs are removed.
+# Directories marked as DEPRECATED should not be used. They're only present in
+# the list to support legacy downstream code.
+NATIVE_API_DIRS = (
+  'talk/app/webrtc',
+  'webrtc',
+  'webrtc/base',  # DEPRECATED.
+  'webrtc/common_audio/include',  # DEPRECATED.
+  'webrtc/modules/audio_coding/include',
+  'webrtc/modules/audio_conference_mixer/include',  # DEPRECATED.
+  'webrtc/modules/audio_device/include',
+  'webrtc/modules/audio_processing/include',
+  'webrtc/modules/bitrate_controller/include',
+  'webrtc/modules/include',
+  'webrtc/modules/remote_bitrate_estimator/include',
+  'webrtc/modules/rtp_rtcp/include',
+  'webrtc/modules/rtp_rtcp/source',  # DEPRECATED.
+  'webrtc/modules/utility/include',
+  'webrtc/modules/video_coding/codecs/h264/include',
+  'webrtc/modules/video_coding/codecs/i420/include',
+  'webrtc/modules/video_coding/codecs/vp8/include',
+  'webrtc/modules/video_coding/codecs/vp9/include',
+  'webrtc/modules/video_coding/include',
+  'webrtc/system_wrappers/include',  # DEPRECATED.
+  'webrtc/voice_engine/include',
+)
+
+
+def _VerifyNativeApiHeadersListIsValid(input_api, output_api):
+  """Ensures the list of native API header directories is up to date."""
+  non_existing_paths = []
+  native_api_full_paths = [
+      input_api.os_path.join(input_api.PresubmitLocalPath(),
+                             *path.split('/')) for path in NATIVE_API_DIRS]
+  for path in native_api_full_paths:
+    if not os.path.isdir(path):
+      non_existing_paths.append(path)
+  if non_existing_paths:
+    return [output_api.PresubmitError(
+        'Directories to native API headers have changed which has made the '
+        'list in PRESUBMIT.py outdated.\nPlease update it to the current '
+        'location of our native APIs.',
+        non_existing_paths)]
+  return []
+
+
+def _CheckNativeApiHeaderChanges(input_api, output_api):
+  """Checks to remind proper changing of native APIs."""
+  files = []
+  for f in input_api.AffectedSourceFiles(input_api.FilterSourceFile):
+    if f.LocalPath().endswith('.h'):
+      for path in NATIVE_API_DIRS:
+        if os.path.dirname(f.LocalPath()) == path:
+          files.append(f)
+
+  if files:
+    return [output_api.PresubmitNotifyResult(
+        'You seem to be changing native API header files. Please make sure '
+        'you:\n'
+        '  1. Make compatible changes that don\'t break existing clients.\n'
+        '  2. Mark the old APIs as deprecated.\n'
+        '  3. Create a timeline and plan for when the deprecated method will '
+        'be removed (preferably 3 months or so).\n'
+        '  4. Update/inform existing downstream code owners to stop using the '
+        'deprecated APIs: \n'
+        'send announcement to discuss-webrtc@googlegroups.com and '
+        'webrtc-users@google.com.\n'
+        '  5. (after ~3 months) remove the deprecated API.\n'
+        'Related files:',
+        files)]
+  return []
+
+
 def _CheckNoIOStreamInHeaders(input_api, output_api):
   """Checks to make sure no .h files include <iostream>."""
   files = []
@@ -54,6 +148,14 @@ def _CheckNoFRIEND_TEST(input_api, output_api):
       'use FRIEND_TEST_ALL_PREFIXES() instead.\n' + '\n'.join(problems))]
 
 
+def _IsLintWhitelisted(whitelist_dirs, file_path):
+  """ Checks if a file is whitelisted for lint check."""
+  for path in whitelist_dirs:
+    if os.path.dirname(file_path).startswith(path):
+      return True
+  return False
+
+
 def _CheckApprovedFilesLintClean(input_api, output_api,
                                  source_file_filter=None):
   """Checks that all new or whitelisted .cc and .h files pass cpplint.py.
@@ -68,12 +170,9 @@ def _CheckApprovedFilesLintClean(input_api, output_api,
   # pylint: disable=W0212
   cpplint._cpplint_state.ResetErrorCounts()
 
-  # Justifications for each filter:
-  #
-  # - build/header_guard  : WebRTC coding style says they should be prefixed
-  #                         with WEBRTC_, which is not possible to configure in
-  #                         cpplint.py.
-  cpplint._SetFilters('-build/header_guard')
+  # Create a platform independent whitelist for the CPPLINT_DIRS.
+  whitelist_dirs = [input_api.os_path.join(*path.split('/'))
+                    for path in CPPLINT_DIRS]
 
   # Use the strictest verbosity level for cpplint.py (level 1) which is the
   # default when running cpplint.py from command line.
@@ -83,7 +182,7 @@ def _CheckApprovedFilesLintClean(input_api, output_api,
   files = []
   for f in input_api.AffectedSourceFiles(source_file_filter):
     # Note that moved/renamed files also count as added.
-    if f.Action() == 'A':
+    if f.Action() == 'A' or _IsLintWhitelisted(whitelist_dirs, f.LocalPath()):
       files.append(f.AbsoluteLocalPath())
 
   for file_name in files:
@@ -256,6 +355,14 @@ def _RunPythonTests(input_api, output_api):
 def _CommonChecks(input_api, output_api):
   """Checks common to both upload and commit."""
   results = []
+  # Filter out files that are in objc or ios dirs from being cpplint-ed since
+  # they do not follow C++ lint rules.
+  black_list = input_api.DEFAULT_BLACK_LIST + (
+    r".*\bobjc[\\\/].*",
+  )
+  source_file_filter = lambda x: input_api.FilterSourceFile(x, None, black_list)
+  results.extend(_CheckApprovedFilesLintClean(
+      input_api, output_api, source_file_filter))
   results.extend(input_api.canned_checks.RunPylint(input_api, output_api,
       black_list=(r'^.*gviz_api\.py$',
                   r'^.*gaeunit\.py$',
@@ -305,7 +412,7 @@ def _CommonChecks(input_api, output_api):
       input_api, output_api))
   results.extend(input_api.canned_checks.CheckChangeTodoHasOwner(
       input_api, output_api))
-  results.extend(_CheckApprovedFilesLintClean(input_api, output_api))
+  results.extend(_CheckNativeApiHeaderChanges(input_api, output_api))
   results.extend(_CheckNoIOStreamInHeaders(input_api, output_api))
   results.extend(_CheckNoFRIEND_TEST(input_api, output_api))
   results.extend(_CheckGypChanges(input_api, output_api))
@@ -325,6 +432,7 @@ def CheckChangeOnUpload(input_api, output_api):
 def CheckChangeOnCommit(input_api, output_api):
   results = []
   results.extend(_CommonChecks(input_api, output_api))
+  results.extend(_VerifyNativeApiHeadersListIsValid(input_api, output_api))
   results.extend(input_api.canned_checks.CheckOwners(input_api, output_api))
   results.extend(input_api.canned_checks.CheckChangeWasUploaded(
       input_api, output_api))

@@ -72,20 +72,21 @@ ClassReferenceHolder::ClassReferenceHolder(JNIEnv* jni) {
   LoadClass(jni, "org/webrtc/IceCandidate");
 #if defined(ANDROID) && !defined(WEBRTC_CHROMIUM_BUILD)
   LoadClass(jni, "android/graphics/SurfaceTexture");
-  LoadClass(jni, "javax/microedition/khronos/egl/EGLContext");
   LoadClass(jni, "org/webrtc/CameraEnumerator");
   LoadClass(jni, "org/webrtc/Camera2Enumerator");
   LoadClass(jni, "org/webrtc/CameraEnumerationAndroid");
   LoadClass(jni, "org/webrtc/VideoCapturerAndroid");
   LoadClass(jni, "org/webrtc/VideoCapturerAndroid$NativeObserver");
   LoadClass(jni, "org/webrtc/EglBase");
+  LoadClass(jni, "org/webrtc/EglBase$Context");
+  LoadClass(jni, "org/webrtc/EglBase14$Context");
   LoadClass(jni, "org/webrtc/NetworkMonitor");
   LoadClass(jni, "org/webrtc/MediaCodecVideoEncoder");
   LoadClass(jni, "org/webrtc/MediaCodecVideoEncoder$OutputBufferInfo");
   LoadClass(jni, "org/webrtc/MediaCodecVideoEncoder$VideoCodecType");
   LoadClass(jni, "org/webrtc/MediaCodecVideoDecoder");
   LoadClass(jni, "org/webrtc/MediaCodecVideoDecoder$DecodedTextureBuffer");
-  LoadClass(jni, "org/webrtc/MediaCodecVideoDecoder$DecodedByteBuffer");
+  LoadClass(jni, "org/webrtc/MediaCodecVideoDecoder$DecodedOutputBuffer");
   LoadClass(jni, "org/webrtc/MediaCodecVideoDecoder$VideoCodecType");
   LoadClass(jni, "org/webrtc/SurfaceTextureHelper");
 #endif

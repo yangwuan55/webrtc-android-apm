@@ -23,8 +23,13 @@
 #include "webrtc/modules/rtp_rtcp/source/rtp_rtcp_impl.h"
 
 namespace webrtc {
-using namespace RTCPUtility;
-using namespace RTCPHelp;
+using RTCPHelp::RTCPPacketInformation;
+using RTCPHelp::RTCPReceiveInformation;
+using RTCPHelp::RTCPReportBlockInformation;
+using RTCPUtility::kBtVoipMetric;
+using RTCPUtility::RTCPCnameInformation;
+using RTCPUtility::RTCPPacketReportBlockItem;
+using RTCPUtility::RTCPPacketTypes;
 
 // The number of RTCP time intervals needed to trigger a timeout.
 const int kRrTimeoutIntervals = 3;
@@ -741,7 +746,7 @@ bool RTCPReceiver::UpdateRTCPReceiveInformationTimers() {
   return updateBoundingSet;
 }
 
-int32_t RTCPReceiver::BoundingSet(bool &tmmbrOwner, TMMBRSet* boundingSetRec) {
+int32_t RTCPReceiver::BoundingSet(bool* tmmbrOwner, TMMBRSet* boundingSetRec) {
   CriticalSectionScoped lock(_criticalSectionRTCPReceiver);
 
   std::map<uint32_t, RTCPReceiveInformation*>::iterator receiveInfoIt =
@@ -761,7 +766,7 @@ int32_t RTCPReceiver::BoundingSet(bool &tmmbrOwner, TMMBRSet* boundingSetRec) {
         i++) {
       if(receiveInfo->TmmbnBoundingSet.Ssrc(i) == main_ssrc_) {
         // owner of bounding set
-        tmmbrOwner = true;
+        *tmmbrOwner = true;
       }
       boundingSetRec->SetEntry(i,
                                receiveInfo->TmmbnBoundingSet.Tmmbr(i),

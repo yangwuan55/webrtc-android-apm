@@ -323,7 +323,7 @@ void LossFilter::SetLoss(float loss_percent) {
 void LossFilter::RunFor(int64_t /*time_ms*/, Packets* in_out) {
   assert(in_out);
   for (PacketsIt it = in_out->begin(); it != in_out->end(); ) {
-    if (random_.Rand() < loss_fraction_) {
+    if (random_.Rand<float>() < loss_fraction_) {
       delete *it;
       it = in_out->erase(it);
     } else {
@@ -391,7 +391,7 @@ void JitterFilter::SetMaxJitter(int64_t max_jitter_ms) {
 }
 
 namespace {
-inline int64_t TruncatedNSigmaGaussian(test::Random* const random,
+inline int64_t TruncatedNSigmaGaussian(Random* const random,
                                        int64_t mean,
                                        int64_t std_dev) {
   int64_t gaussian_random = random->Gaussian(mean, std_dev);
@@ -459,7 +459,7 @@ void ReorderFilter::RunFor(int64_t /*time_ms*/, Packets* in_out) {
     PacketsIt last_it = in_out->begin();
     PacketsIt it = last_it;
     while (++it != in_out->end()) {
-      if (random_.Rand() < reorder_fraction_) {
+      if (random_.Rand<float>() < reorder_fraction_) {
         int64_t t1 = (*last_it)->send_time_us();
         int64_t t2 = (*it)->send_time_us();
         std::swap(*last_it, *it);
@@ -586,7 +586,7 @@ bool TraceBasedDeliveryFilter::Init(const std::string& filename) {
     return false;
   }
   int64_t first_timestamp = -1;
-  while(!feof(trace_file)) {
+  while (!feof(trace_file)) {
     const size_t kMaxLineLength = 100;
     char line[kMaxLineLength];
     if (fgets(line, kMaxLineLength, trace_file)) {
@@ -680,6 +680,7 @@ VideoSource::VideoSource(int flow_id,
       frame_period_ms_(1000.0 / fps),
       bits_per_second_(1000 * kbps),
       frame_size_bytes_(bits_per_second_ / 8 / fps),
+      random_(0x12345678),
       flow_id_(flow_id),
       next_frame_ms_(first_frame_offset_ms),
       next_frame_rand_ms_(0),
@@ -713,9 +714,7 @@ void VideoSource::RunFor(int64_t time_ms, Packets* in_out) {
     const int64_t kRandAmplitude = 2;
     // A variance picked uniformly from {-1, 0, 1} ms is added to the frame
     // timestamp.
-    next_frame_rand_ms_ =
-        kRandAmplitude * static_cast<float>(rand()) / RAND_MAX -
-        kRandAmplitude / 2;
+    next_frame_rand_ms_ = kRandAmplitude * (random_.Rand<float>() - 0.5);
 
     // Ensure frame will not have a negative timestamp.
     int64_t next_frame_ms =

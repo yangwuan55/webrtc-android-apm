@@ -36,10 +36,12 @@
 #include "webrtc/base/asyncinvoker.h"
 #include "webrtc/base/criticalsection.h"
 #include "webrtc/base/thread_checker.h"
+#include "webrtc/common_video/include/i420_buffer_pool.h"
 
 namespace webrtc_jni {
 
-class NativeTextureHandleImpl;
+struct NativeHandleImpl;
+class SurfaceTextureHelper;
 
 // AndroidVideoCapturerJni implements AndroidVideoCapturerDelegate.
 // The purpose of the delegate is to hide the JNI specifics from the C++ only
@@ -48,7 +50,9 @@ class AndroidVideoCapturerJni : public webrtc::AndroidVideoCapturerDelegate {
  public:
   static int SetAndroidObjects(JNIEnv* jni, jobject appliction_context);
 
-  AndroidVideoCapturerJni(JNIEnv* jni, jobject j_video_capturer);
+  AndroidVideoCapturerJni(JNIEnv* jni,
+                          jobject j_video_capturer,
+                          jobject j_surface_texture_helper);
 
   void Start(int width, int height, int framerate,
              webrtc::AndroidVideoCapturer* capturer) override;
@@ -60,15 +64,14 @@ class AndroidVideoCapturerJni : public webrtc::AndroidVideoCapturerDelegate {
   void OnCapturerStarted(bool success);
   void OnMemoryBufferFrame(void* video_frame, int length, int width,
                            int height, int rotation, int64_t timestamp_ns);
-  void OnTextureFrame(int width, int height, int64_t timestamp_ns,
-                      const NativeTextureHandleImpl& handle);
+  void OnTextureFrame(int width, int height, int rotation, int64_t timestamp_ns,
+                      const NativeHandleImpl& handle);
   void OnOutputFormatRequest(int width, int height, int fps);
 
  protected:
   ~AndroidVideoCapturerJni();
 
  private:
-  void ReturnBuffer(int64_t time_stamp);
   JNIEnv* jni();
 
   // To avoid deducing Args from the 3rd parameter of AsyncCapturerInvoke.
@@ -85,10 +88,13 @@ class AndroidVideoCapturerJni : public webrtc::AndroidVideoCapturerDelegate {
       void (webrtc::AndroidVideoCapturer::*method)(Args...),
       typename Identity<Args>::type... args);
 
-  const ScopedGlobalRef<jobject> j_capturer_global_;
+  const ScopedGlobalRef<jobject> j_video_capturer_;
   const ScopedGlobalRef<jclass> j_video_capturer_class_;
   const ScopedGlobalRef<jclass> j_observer_class_;
 
+  // Used on the Java thread running the camera.
+  webrtc::I420BufferPool buffer_pool_;
+  rtc::scoped_refptr<SurfaceTextureHelper> surface_texture_helper_;
   rtc::ThreadChecker thread_checker_;
 
   // |capturer| is a guaranteed to be a valid pointer between a call to

@@ -59,7 +59,7 @@ enum {
 };
 
 static const int64_t kMaxDistance = ~(static_cast<int64_t>(1) << 63);
-#ifdef LINUX
+#ifdef WEBRTC_LINUX
 static const int kYU12Penalty = 16;  // Needs to be higher than MJPG index.
 #endif
 static const int kDefaultScreencastFps = 5;
@@ -82,7 +82,7 @@ CapturedFrame::CapturedFrame()
       pixel_height(0),
       time_stamp(0),
       data_size(0),
-      rotation(0),
+      rotation(webrtc::kVideoRotation_0),
       data(NULL) {}
 
 // TODO(fbarchard): Remove this function once lmimediaengine stops using it.
@@ -92,11 +92,6 @@ bool CapturedFrame::GetDataSize(uint32_t* size) const {
   }
   *size = data_size;
   return true;
-}
-
-webrtc::VideoRotation CapturedFrame::GetRotation() const {
-  ASSERT(rotation == 0 || rotation == 90 || rotation == 180 || rotation == 270);
-  return static_cast<webrtc::VideoRotation>(rotation);
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -126,7 +121,6 @@ void VideoCapturer::Construct() {
   SignalFrameCaptured.connect(this, &VideoCapturer::OnFrameCaptured);
   scaled_width_ = 0;
   scaled_height_ = 0;
-  screencast_max_pixels_ = 0;
   muted_ = false;
   black_frame_count_down_ = kNumBlackFramesOnMute;
   enable_video_adapter_ = true;
@@ -365,16 +359,11 @@ void VideoCapturer::OnFrameCaptured(VideoCapturer*,
 
   if (IsScreencast()) {
     int scaled_width, scaled_height;
-    if (screencast_max_pixels_ > 0) {
-      ComputeScaleMaxPixels(captured_frame->width, captured_frame->height,
-          screencast_max_pixels_, &scaled_width, &scaled_height);
-    } else {
-      int desired_screencast_fps = capture_format_.get() ?
-          VideoFormat::IntervalToFps(capture_format_->interval) :
-          kDefaultScreencastFps;
-      ComputeScale(captured_frame->width, captured_frame->height,
-                   desired_screencast_fps, &scaled_width, &scaled_height);
-    }
+    int desired_screencast_fps = capture_format_.get() ?
+      VideoFormat::IntervalToFps(capture_format_->interval) :
+      kDefaultScreencastFps;
+    ComputeScale(captured_frame->width, captured_frame->height,
+                 desired_screencast_fps, &scaled_width, &scaled_height);
 
     if (FOURCC_ARGB == captured_frame->fourcc &&
         (scaled_width != captured_frame->width ||
@@ -605,7 +594,7 @@ int64_t VideoCapturer::GetFormatDistance(const VideoFormat& desired,
     for (size_t i = 0; i < preferred_fourccs.size(); ++i) {
       if (supported_fourcc == CanonicalFourCC(preferred_fourccs[i])) {
         delta_fourcc = i;
-#ifdef LINUX
+#ifdef WEBRTC_LINUX
         // For HD avoid YU12 which is a software conversion and has 2 bugs
         // b/7326348 b/6960899.  Reenable when fixed.
         if (supported.height >= 720 && (supported_fourcc == FOURCC_YU12 ||

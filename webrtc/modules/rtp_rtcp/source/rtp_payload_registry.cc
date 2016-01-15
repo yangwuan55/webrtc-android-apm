@@ -8,7 +8,7 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "webrtc/modules/rtp_rtcp/interface/rtp_payload_registry.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_payload_registry.h"
 
 #include "webrtc/base/logging.h"
 #include "webrtc/modules/rtp_rtcp/source/byte_io.h"
@@ -40,7 +40,7 @@ int32_t RTPPayloadRegistry::RegisterReceivePayload(
     const char payload_name[RTP_PAYLOAD_NAME_SIZE],
     const int8_t payload_type,
     const uint32_t frequency,
-    const uint8_t channels,
+    const size_t channels,
     const uint32_t rate,
     bool* created_new_payload) {
   assert(payload_type >= 0);
@@ -139,7 +139,7 @@ void RTPPayloadRegistry::DeregisterAudioCodecOrRedTypeRegardlessOfPayloadType(
     const char payload_name[RTP_PAYLOAD_NAME_SIZE],
     const size_t payload_name_length,
     const uint32_t frequency,
-    const uint8_t channels,
+    const size_t channels,
     const uint32_t rate) {
   RtpUtility::PayloadTypeMap::iterator iterator = payload_type_map_.begin();
   for (; iterator != payload_type_map_.end(); ++iterator) {
@@ -171,7 +171,7 @@ void RTPPayloadRegistry::DeregisterAudioCodecOrRedTypeRegardlessOfPayloadType(
 int32_t RTPPayloadRegistry::ReceivePayloadType(
     const char payload_name[RTP_PAYLOAD_NAME_SIZE],
     const uint32_t frequency,
-    const uint8_t channels,
+    const size_t channels,
     const uint32_t rate,
     int8_t* payload_type) const {
   assert(payload_type);
@@ -343,17 +343,16 @@ bool RTPPayloadRegistry::GetPayloadSpecifics(uint8_t payload_type,
 
 int RTPPayloadRegistry::GetPayloadTypeFrequency(
     uint8_t payload_type) const {
-  RtpUtility::Payload* payload;
-  if (!PayloadTypeToPayload(payload_type, payload)) {
+  const RtpUtility::Payload* payload = PayloadTypeToPayload(payload_type);
+  if (!payload) {
     return -1;
   }
   CriticalSectionScoped cs(crit_sect_.get());
   return rtp_payload_strategy_->GetPayloadTypeFrequency(*payload);
 }
 
-bool RTPPayloadRegistry::PayloadTypeToPayload(
-    const uint8_t payload_type,
-    RtpUtility::Payload*& payload) const {
+const RtpUtility::Payload* RTPPayloadRegistry::PayloadTypeToPayload(
+    uint8_t payload_type) const {
   CriticalSectionScoped cs(crit_sect_.get());
 
   RtpUtility::PayloadTypeMap::const_iterator it =
@@ -361,11 +360,10 @@ bool RTPPayloadRegistry::PayloadTypeToPayload(
 
   // Check that this is a registered payload type.
   if (it == payload_type_map_.end()) {
-    return false;
+    return nullptr;
   }
 
-  payload = it->second;
-  return true;
+  return it->second;
 }
 
 void RTPPayloadRegistry::SetIncomingPayloadType(const RTPHeader& header) {
@@ -390,7 +388,7 @@ class RTPPayloadAudioStrategy : public RTPPayloadStrategy {
 
   bool PayloadIsCompatible(const RtpUtility::Payload& payload,
                            const uint32_t frequency,
-                           const uint8_t channels,
+                           const size_t channels,
                            const uint32_t rate) const override {
     return
         payload.audio &&
@@ -409,7 +407,7 @@ class RTPPayloadAudioStrategy : public RTPPayloadStrategy {
       const char payloadName[RTP_PAYLOAD_NAME_SIZE],
       const int8_t payloadType,
       const uint32_t frequency,
-      const uint8_t channels,
+      const size_t channels,
       const uint32_t rate) const override {
     RtpUtility::Payload* payload = new RtpUtility::Payload;
     payload->name[RTP_PAYLOAD_NAME_SIZE - 1] = 0;
@@ -433,7 +431,7 @@ class RTPPayloadVideoStrategy : public RTPPayloadStrategy {
 
   bool PayloadIsCompatible(const RtpUtility::Payload& payload,
                            const uint32_t frequency,
-                           const uint8_t channels,
+                           const size_t channels,
                            const uint32_t rate) const override {
     return !payload.audio;
   }
@@ -447,7 +445,7 @@ class RTPPayloadVideoStrategy : public RTPPayloadStrategy {
       const char payloadName[RTP_PAYLOAD_NAME_SIZE],
       const int8_t payloadType,
       const uint32_t frequency,
-      const uint8_t channels,
+      const size_t channels,
       const uint32_t rate) const override {
     RtpVideoCodecTypes videoType = kRtpVideoGeneric;
 

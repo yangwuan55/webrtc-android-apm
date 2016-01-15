@@ -11,15 +11,18 @@
 #include "webrtc/sound/alsasoundsystem.h"
 
 #include <algorithm>
-#include "webrtc/sound/sounddevicelocator.h"
-#include "webrtc/sound/soundinputstreaminterface.h"
-#include "webrtc/sound/soundoutputstreaminterface.h"
+#include <string>
+
+#include "webrtc/base/arraysize.h"
 #include "webrtc/base/common.h"
 #include "webrtc/base/logging.h"
 #include "webrtc/base/scoped_ptr.h"
 #include "webrtc/base/stringutils.h"
 #include "webrtc/base/timeutils.h"
 #include "webrtc/base/worker.h"
+#include "webrtc/sound/sounddevicelocator.h"
+#include "webrtc/sound/soundinputstreaminterface.h"
+#include "webrtc/sound/soundoutputstreaminterface.h"
 
 namespace rtc {
 
@@ -257,12 +260,12 @@ class AlsaInputStream :
   }
 
   bool GetVolume(int *volume) override {
-    // TODO: Implement this.
+    // TODO(henrika): Implement this.
     return false;
   }
 
   bool SetVolume(int volume) override {
-    // TODO: Implement this.
+    // TODO(henrika): Implement this.
     return false;
   }
 
@@ -388,12 +391,12 @@ class AlsaOutputStream : public SoundOutputStreamInterface,
   }
 
   bool GetVolume(int *volume) override {
-    // TODO: Implement this.
+    // TODO(henrika): Implement this.
     return false;
   }
 
   bool SetVolume(int volume) override {
-    // TODO: Implement this.
+    // TODO(henrika): Implement this.
     return false;
   }
 
@@ -567,7 +570,6 @@ bool AlsaSoundSystem::EnumerateDevices(
         strcmp(name, ignore_null) != 0 &&
         strcmp(name, ignore_pulse) != 0 &&
         !rtc::starts_with(name, ignore_prefix)) {
-
       // Yes, we do.
       char *desc = symbol_table_.snd_device_name_get_hint()(*list, "DESC");
       if (!desc) {
@@ -606,8 +608,6 @@ bool AlsaSoundSystem::GetDefaultDevice(SoundDeviceLocator **device) {
 }
 
 inline size_t AlsaSoundSystem::FrameSize(const OpenParams &params) {
-  ASSERT(static_cast<int>(params.format) <
-         ARRAY_SIZE(kCricketFormatToSampleSizeTable));
   return kCricketFormatToSampleSizeTable[params.format] * params.channels;
 }
 
@@ -622,7 +622,6 @@ StreamInterface *AlsaSoundSystem::OpenDevice(
         int wait_timeout_ms,
         int flags,
         int freq)) {
-
   if (!IsInitialized()) {
     return NULL;
   }
@@ -662,8 +661,7 @@ StreamInterface *AlsaSoundSystem::OpenDevice(
     latency = std::max(latency, kMinimumLatencyUsecs);
   }
 
-  ASSERT(static_cast<int>(params.format) <
-         ARRAY_SIZE(kCricketFormatToAlsaFormatTable));
+  ASSERT(params.format < arraysize(kCricketFormatToAlsaFormatTable));
 
   err = symbol_table_.snd_pcm_set_params()(
       handle,

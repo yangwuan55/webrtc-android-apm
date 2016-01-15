@@ -20,19 +20,18 @@
 #include "webrtc/base/trace_event.h"
 #include "webrtc/call/congestion_controller.h"
 #include "webrtc/common_video/libyuv/include/webrtc_libyuv.h"
-#include "webrtc/modules/pacing/include/packet_router.h"
+#include "webrtc/modules/bitrate_controller/include/bitrate_controller.h"
+#include "webrtc/modules/pacing/packet_router.h"
+#include "webrtc/video/call_stats.h"
+#include "webrtc/video/encoder_state_feedback.h"
+#include "webrtc/video/payload_router.h"
 #include "webrtc/video/video_capture_input.h"
-#include "webrtc/video_engine/call_stats.h"
-#include "webrtc/video_engine/encoder_state_feedback.h"
-#include "webrtc/video_engine/payload_router.h"
-#include "webrtc/video_engine/vie_channel.h"
-#include "webrtc/video_engine/vie_defines.h"
-#include "webrtc/video_engine/vie_encoder.h"
+#include "webrtc/video/vie_channel.h"
+#include "webrtc/video/vie_encoder.h"
 #include "webrtc/video_send_stream.h"
 
 namespace webrtc {
 
-class BitrateAllocator;
 class PacedSender;
 class RtcpIntraFrameObserver;
 class TransportFeedbackObserver;
@@ -98,7 +97,7 @@ std::string VideoSendStream::Config::ToString() const {
   ss << ", post_encode_callback: " << (post_encode_callback != nullptr
                                            ? "(EncodedFrameObserver)"
                                            : "nullptr");
-  ss << "local_renderer: " << (local_renderer != nullptr ? "(VideoRenderer)"
+  ss << ", local_renderer: " << (local_renderer != nullptr ? "(VideoRenderer)"
                                                          : "nullptr");
   ss << ", render_delay_ms: " << render_delay_ms;
   ss << ", target_delay_ms: " << target_delay_ms;
@@ -114,10 +113,14 @@ VideoSendStream::VideoSendStream(
     ProcessThread* module_process_thread,
     CallStats* call_stats,
     CongestionController* congestion_controller,
+    BitrateAllocator* bitrate_allocator,
     const VideoSendStream::Config& config,
     const VideoEncoderConfig& encoder_config,
     const std::map<uint32_t, RtpState>& suspended_ssrcs)
-    : transport_adapter_(config.send_transport),
+    : stats_proxy_(Clock::GetRealTimeClock(),
+                   config,
+                   encoder_config.content_type),
+      transport_adapter_(config.send_transport),
       encoded_frame_proxy_(config.post_encode_callback),
       config_(config),
       suspended_ssrcs_(suspended_ssrcs),
@@ -125,8 +128,7 @@ VideoSendStream::VideoSendStream(
       call_stats_(call_stats),
       congestion_controller_(congestion_controller),
       encoder_feedback_(new EncoderStateFeedback()),
-      use_config_bitrate_(true),
-      stats_proxy_(Clock::GetRealTimeClock(), config) {
+      use_config_bitrate_(true) {
   LOG(LS_INFO) << "VideoSendStream: " << config_.ToString();
   RTC_DCHECK(!config_.rtp.ssrcs.empty());
 
@@ -145,7 +147,7 @@ VideoSendStream::VideoSendStream(
   vie_encoder_.reset(new ViEEncoder(
       num_cpu_cores, module_process_thread_, &stats_proxy_,
       config.pre_encode_callback, congestion_controller_->pacer(),
-      congestion_controller_->bitrate_allocator()));
+      bitrate_allocator));
   RTC_CHECK(vie_encoder_->Init());
 
   vie_channel_.reset(new ViEChannel(
@@ -197,8 +199,8 @@ VideoSendStream::VideoSendStream(
   vie_channel_->SetProtectionMode(enable_protection_nack, enable_protection_fec,
                                   config_.rtp.fec.red_payload_type,
                                   config_.rtp.fec.ulpfec_payload_type);
-  vie_encoder_->UpdateProtectionMethod(enable_protection_nack,
-                                       enable_protection_fec);
+  vie_encoder_->SetProtectionMethod(enable_protection_nack,
+                                    enable_protection_fec);
 
   ConfigureSsrcs();
 
@@ -346,6 +348,12 @@ bool VideoSendStream::ReconfigureVideoEncoder(
     if (config.encoder_specific_settings != nullptr) {
       video_codec.codecSpecific.VP9 = *reinterpret_cast<const VideoCodecVP9*>(
                                           config.encoder_specific_settings);
+      if (video_codec.mode == kScreensharing) {
+        video_codec.codecSpecific.VP9.flexibleMode = true;
+        // For now VP9 screensharing use 1 temporal and 2 spatial layers.
+        RTC_DCHECK_EQ(video_codec.codecSpecific.VP9.numberOfTemporalLayers, 1);
+        RTC_DCHECK_EQ(video_codec.codecSpecific.VP9.numberOfSpatialLayers, 2);
+      }
     }
     video_codec.codecSpecific.VP9.numberOfTemporalLayers =
         static_cast<unsigned char>(
@@ -370,6 +378,16 @@ bool VideoSendStream::ReconfigureVideoEncoder(
       static_cast<unsigned char>(streams.size());
   video_codec.minBitrate = streams[0].min_bitrate_bps / 1000;
   RTC_DCHECK_LE(streams.size(), static_cast<size_t>(kMaxSimulcastStreams));
+  if (video_codec.codecType == kVideoCodecVP9) {
+    // If the vector is empty, bitrates will be configured automatically.
+    RTC_DCHECK(config.spatial_layers.empty() ||
+               config.spatial_layers.size() ==
+                   video_codec.codecSpecific.VP9.numberOfSpatialLayers);
+    RTC_DCHECK_LE(video_codec.codecSpecific.VP9.numberOfSpatialLayers,
+                  kMaxSimulcastStreams);
+    for (size_t i = 0; i < config.spatial_layers.size(); ++i)
+      video_codec.spatialLayers[i] = config.spatial_layers[i];
+  }
   for (size_t i = 0; i < streams.size(); ++i) {
     SimulcastStream* sim_stream = &video_codec.simulcastStream[i];
     RTC_DCHECK_GT(streams[i].width, 0u);
@@ -382,8 +400,8 @@ bool VideoSendStream::ReconfigureVideoEncoder(
     RTC_DCHECK_GE(streams[i].max_bitrate_bps, streams[i].target_bitrate_bps);
     RTC_DCHECK_GE(streams[i].max_qp, 0);
 
-    sim_stream->width = static_cast<unsigned short>(streams[i].width);
-    sim_stream->height = static_cast<unsigned short>(streams[i].height);
+    sim_stream->width = static_cast<uint16_t>(streams[i].width);
+    sim_stream->height = static_cast<uint16_t>(streams[i].height);
     sim_stream->minBitrate = streams[i].min_bitrate_bps / 1000;
     sim_stream->targetBitrate = streams[i].target_bitrate_bps / 1000;
     sim_stream->maxBitrate = streams[i].max_bitrate_bps / 1000;
@@ -392,12 +410,12 @@ bool VideoSendStream::ReconfigureVideoEncoder(
         streams[i].temporal_layer_thresholds_bps.size() + 1);
 
     video_codec.width = std::max(video_codec.width,
-                                 static_cast<unsigned short>(streams[i].width));
+                                 static_cast<uint16_t>(streams[i].width));
     video_codec.height = std::max(
-        video_codec.height, static_cast<unsigned short>(streams[i].height));
+        video_codec.height, static_cast<uint16_t>(streams[i].height));
     video_codec.minBitrate =
-        std::min(video_codec.minBitrate,
-                 static_cast<unsigned int>(streams[i].min_bitrate_bps / 1000));
+        std::min(static_cast<uint16_t>(video_codec.minBitrate),
+                 static_cast<uint16_t>(streams[i].min_bitrate_bps / 1000));
     video_codec.maxBitrate += streams[i].max_bitrate_bps / 1000;
     video_codec.qpMax = std::max(video_codec.qpMax,
                                  static_cast<unsigned int>(streams[i].max_qp));
@@ -418,6 +436,8 @@ bool VideoSendStream::ReconfigureVideoEncoder(
        i < config_.rtp.ssrcs.size(); ++i) {
     stats_proxy_.OnInactiveSsrc(config_.rtp.ssrcs[i]);
   }
+
+  stats_proxy_.SetContentType(config.content_type);
 
   RTC_DCHECK_GE(config.min_transmit_bitrate_bps, 0);
   vie_encoder_->SetMinTransmitBitrate(config.min_transmit_bitrate_bps / 1000);
@@ -480,7 +500,7 @@ std::map<uint32_t, RtpState> VideoSendStream::GetRtpStates() const {
   std::map<uint32_t, RtpState> rtp_states;
   for (size_t i = 0; i < config_.rtp.ssrcs.size(); ++i) {
     uint32_t ssrc = config_.rtp.ssrcs[i];
-    rtp_states[ssrc] = vie_channel_->GetRtpStateForSsrc( ssrc);
+    rtp_states[ssrc] = vie_channel_->GetRtpStateForSsrc(ssrc);
   }
 
   for (size_t i = 0; i < config_.rtp.rtx.ssrcs.size(); ++i) {
@@ -496,7 +516,7 @@ void VideoSendStream::SignalNetworkState(NetworkState state) {
   // When it goes down, disable RTCP afterwards. This ensures that any packets
   // sent due to the network state changed will not be dropped.
   if (state == kNetworkUp)
-    vie_channel_->SetRTCPMode(RtcpMode::kCompound);
+    vie_channel_->SetRTCPMode(config_.rtp.rtcp_mode);
   vie_encoder_->SetNetworkTransmissionState(state == kNetworkUp);
   if (state == kNetworkDown)
     vie_channel_->SetRTCPMode(RtcpMode::kOff);
@@ -517,7 +537,12 @@ int64_t VideoSendStream::GetRtt() const {
   return -1;
 }
 
+int VideoSendStream::GetPaddingNeededBps() const {
+  return vie_encoder_->GetPaddingNeededBps();
+}
+
 bool VideoSendStream::SetSendCodec(VideoCodec video_codec) {
+  static const int kEncoderMinBitrate = 30;
   if (video_codec.maxBitrate == 0) {
     // Unset max bitrate -> cap to one bit per pixel.
     video_codec.maxBitrate =
@@ -525,10 +550,10 @@ bool VideoSendStream::SetSendCodec(VideoCodec video_codec) {
         1000;
   }
 
-  if (video_codec.minBitrate < kViEMinCodecBitrate)
-    video_codec.minBitrate = kViEMinCodecBitrate;
-  if (video_codec.maxBitrate < kViEMinCodecBitrate)
-    video_codec.maxBitrate = kViEMinCodecBitrate;
+  if (video_codec.minBitrate < kEncoderMinBitrate)
+    video_codec.minBitrate = kEncoderMinBitrate;
+  if (video_codec.maxBitrate < kEncoderMinBitrate)
+    video_codec.maxBitrate = kEncoderMinBitrate;
 
   // Stop the media flow while reconfiguring.
   vie_encoder_->Pause();
@@ -547,13 +572,7 @@ bool VideoSendStream::SetSendCodec(VideoCodec video_codec) {
   // to send on all SSRCs at once etc.)
   std::vector<uint32_t> used_ssrcs = config_.rtp.ssrcs;
   used_ssrcs.resize(static_cast<size_t>(video_codec.numberOfSimulcastStreams));
-
-  // Update used SSRCs.
   vie_encoder_->SetSsrcs(used_ssrcs);
-
-  // Update the protection mode, we might be switching NACK/FEC.
-  vie_encoder_->UpdateProtectionMethod(vie_encoder_->nack_enabled(),
-                                       vie_channel_->IsSendingFecEnabled());
 
   // Restart the media flow
   vie_encoder_->Restart();

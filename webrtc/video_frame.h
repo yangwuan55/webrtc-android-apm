@@ -13,7 +13,7 @@
 
 #include "webrtc/base/scoped_ref_ptr.h"
 #include "webrtc/common_types.h"
-#include "webrtc/common_video/interface/video_frame_buffer.h"
+#include "webrtc/common_video/include/video_frame_buffer.h"
 #include "webrtc/common_video/rotation.h"
 #include "webrtc/typedefs.h"
 
@@ -157,6 +157,8 @@ class VideoFrame {
   // Convert native-handle frame to memory-backed I420 frame. Should not be
   // called on a non-native-handle frame.
   VideoFrame ConvertNativeToI420Frame() const;
+
+  bool EqualsFrame(const VideoFrame& frame) const;
 
  private:
   // An opaque reference counted handle that stores the pixel data.

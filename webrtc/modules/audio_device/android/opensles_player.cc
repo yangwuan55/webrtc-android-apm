@@ -15,6 +15,7 @@
 #include "webrtc/base/arraysize.h"
 #include "webrtc/base/checks.h"
 #include "webrtc/base/format_macros.h"
+#include "webrtc/base/timeutils.h"
 #include "webrtc/modules/audio_device/android/audio_manager.h"
 #include "webrtc/modules/audio_device/fine_audio_buffer.h"
 
@@ -38,7 +39,6 @@ namespace webrtc {
 
 OpenSLESPlayer::OpenSLESPlayer(AudioManager* audio_manager)
     : audio_parameters_(audio_manager->GetPlayoutAudioParameters()),
-      stream_type_(audio_manager->OutputStreamType()),
       audio_device_buffer_(NULL),
       initialized_(false),
       playing_(false),
@@ -47,11 +47,9 @@ OpenSLESPlayer::OpenSLESPlayer(AudioManager* audio_manager)
       engine_(nullptr),
       player_(nullptr),
       simple_buffer_queue_(nullptr),
-      volume_(nullptr) {
+      volume_(nullptr),
+      last_play_time_(0) {
   ALOGD("ctor%s", GetThreadInfo().c_str());
-  RTC_DCHECK(stream_type_ == SL_ANDROID_STREAM_VOICE ||
-             stream_type_ == SL_ANDROID_STREAM_RING ||
-             stream_type_ == SL_ANDROID_STREAM_MEDIA) << stream_type_;
   // Use native audio output parameters provided by the audio manager and
   // define the PCM format structure.
   pcm_format_ = CreatePCMConfiguration(audio_parameters_.channels(),
@@ -99,6 +97,7 @@ int OpenSLESPlayer::InitPlayout() {
   CreateMix();
   initialized_ = true;
   buffer_index_ = 0;
+  last_play_time_ = rtc::Time();
   return 0;
 }
 
@@ -180,15 +179,15 @@ void OpenSLESPlayer::AttachAudioBuffer(AudioDeviceBuffer* audioBuffer) {
   const int sample_rate_hz = audio_parameters_.sample_rate();
   ALOGD("SetPlayoutSampleRate(%d)", sample_rate_hz);
   audio_device_buffer_->SetPlayoutSampleRate(sample_rate_hz);
-  const int channels = audio_parameters_.channels();
-  ALOGD("SetPlayoutChannels(%d)", channels);
+  const size_t channels = audio_parameters_.channels();
+  ALOGD("SetPlayoutChannels(%" PRIuS ")", channels);
   audio_device_buffer_->SetPlayoutChannels(channels);
   RTC_CHECK(audio_device_buffer_);
   AllocateDataBuffers();
 }
 
 SLDataFormat_PCM OpenSLESPlayer::CreatePCMConfiguration(
-    int channels,
+    size_t channels,
     int sample_rate,
     size_t bits_per_sample) {
   ALOGD("CreatePCMConfiguration");
@@ -237,7 +236,16 @@ void OpenSLESPlayer::AllocateDataBuffers() {
   RTC_DCHECK(thread_checker_.CalledOnValidThread());
   RTC_DCHECK(!simple_buffer_queue_);
   RTC_CHECK(audio_device_buffer_);
-  bytes_per_buffer_ = audio_parameters_.GetBytesPerBuffer();
+  // Don't use the lowest possible size as native buffer size. Instead,
+  // use 10ms to better match the frame size that WebRTC uses. It will result
+  // in a reduced risk for audio glitches and also in a more "clean" sequence
+  // of callbacks from the OpenSL ES thread in to WebRTC when asking for audio
+  // to render.
+  ALOGD("lowest possible buffer size: %" PRIuS,
+      audio_parameters_.GetBytesPerBuffer());
+  bytes_per_buffer_ = audio_parameters_.GetBytesPerFrame() *
+      audio_parameters_.frames_per_10ms_buffer();
+  RTC_DCHECK_GE(bytes_per_buffer_, audio_parameters_.GetBytesPerBuffer());
   ALOGD("native buffer size: %" PRIuS, bytes_per_buffer_);
   // Create a modified audio buffer class which allows us to ask for any number
   // of samples (and not only multiple of 10ms) to match the native OpenSL ES
@@ -351,7 +359,7 @@ bool OpenSLESPlayer::CreateAudioPlayer() {
       false);
   // Set audio player configuration to SL_ANDROID_STREAM_VOICE which
   // corresponds to android.media.AudioManager.STREAM_VOICE_CALL.
-  SLint32 stream_type = stream_type_;
+  SLint32 stream_type = SL_ANDROID_STREAM_VOICE;
   RETURN_ON_ERROR(
       (*player_config)
           ->SetConfiguration(player_config, SL_ANDROID_KEY_STREAM_TYPE,
@@ -422,6 +430,15 @@ void OpenSLESPlayer::FillBufferQueue() {
 }
 
 void OpenSLESPlayer::EnqueuePlayoutData() {
+  // Check delta time between two successive callbacks and provide a warning
+  // if it becomes very large.
+  // TODO(henrika): using 100ms as upper limit but this value is rather random.
+  const uint32_t current_time = rtc::Time();
+  const uint32_t diff = current_time - last_play_time_;
+  if (diff > 100) {
+    ALOGW("Bad OpenSL ES playout timing, dT=%u [ms]", diff);
+  }
+  last_play_time_ = current_time;
   // Read audio data from the WebRTC source using the FineAudioBuffer object
   // to adjust for differences in buffer size between WebRTC (10ms) and native
   // OpenSL ES.
