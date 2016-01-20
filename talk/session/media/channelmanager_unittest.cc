@@ -183,38 +183,6 @@ TEST_F(ChannelManagerTest, NoTransportChannelTest) {
   cm_->Terminate();
 }
 
-// Test that SetDefaultVideoCodec passes through the right values.
-TEST_F(ChannelManagerTest, SetDefaultVideoEncoderConfig) {
-  cricket::VideoCodec codec(96, "G264", 1280, 720, 60, 0);
-  cricket::VideoEncoderConfig config(codec, 1, 2);
-  EXPECT_TRUE(cm_->Init());
-  EXPECT_TRUE(cm_->SetDefaultVideoEncoderConfig(config));
-  EXPECT_EQ(config, fme_->default_video_encoder_config());
-}
-
-struct GetCapturerFrameSize : public sigslot::has_slots<> {
-  void OnVideoFrame(VideoCapturer* capturer, const VideoFrame* frame) {
-    width = frame->GetWidth();
-    height = frame->GetHeight();
-  }
-  GetCapturerFrameSize(VideoCapturer* capturer) : width(0), height(0) {
-    capturer->SignalVideoFrame.connect(this,
-                                       &GetCapturerFrameSize::OnVideoFrame);
-    static_cast<FakeVideoCapturer*>(capturer)->CaptureFrame();
-  }
-  size_t width;
-  size_t height;
-};
-
-// Test that SetDefaultVideoCodec passes through the right values.
-TEST_F(ChannelManagerTest, SetDefaultVideoCodecBeforeInit) {
-  cricket::VideoCodec codec(96, "G264", 1280, 720, 60, 0);
-  cricket::VideoEncoderConfig config(codec, 1, 2);
-  EXPECT_TRUE(cm_->SetDefaultVideoEncoderConfig(config));
-  EXPECT_TRUE(cm_->Init());
-  EXPECT_EQ(config, fme_->default_video_encoder_config());
-}
-
 TEST_F(ChannelManagerTest, GetSetOutputVolumeBeforeInit) {
   int level;
   // Before init, SetOutputVolume() remembers the volume but does not change the
@@ -248,33 +216,6 @@ TEST_F(ChannelManagerTest, GetSetOutputVolume) {
   EXPECT_EQ(60, fme_->output_volume());
   EXPECT_TRUE(cm_->GetOutputVolume(&level));
   EXPECT_EQ(60, level);
-}
-
-// Test that logging options set before Init are applied properly,
-// and retained even after Init.
-TEST_F(ChannelManagerTest, SetLoggingBeforeInit) {
-  cm_->SetVoiceLogging(rtc::LS_INFO, "test-voice");
-  cm_->SetVideoLogging(rtc::LS_VERBOSE, "test-video");
-  EXPECT_EQ(rtc::LS_INFO, fme_->voice_loglevel());
-  EXPECT_STREQ("test-voice", fme_->voice_logfilter().c_str());
-  EXPECT_EQ(rtc::LS_VERBOSE, fme_->video_loglevel());
-  EXPECT_STREQ("test-video", fme_->video_logfilter().c_str());
-  EXPECT_TRUE(cm_->Init());
-  EXPECT_EQ(rtc::LS_INFO, fme_->voice_loglevel());
-  EXPECT_STREQ("test-voice", fme_->voice_logfilter().c_str());
-  EXPECT_EQ(rtc::LS_VERBOSE, fme_->video_loglevel());
-  EXPECT_STREQ("test-video", fme_->video_logfilter().c_str());
-}
-
-// Test that logging options set after Init are applied properly.
-TEST_F(ChannelManagerTest, SetLogging) {
-  EXPECT_TRUE(cm_->Init());
-  cm_->SetVoiceLogging(rtc::LS_INFO, "test-voice");
-  cm_->SetVideoLogging(rtc::LS_VERBOSE, "test-video");
-  EXPECT_EQ(rtc::LS_INFO, fme_->voice_loglevel());
-  EXPECT_STREQ("test-voice", fme_->voice_logfilter().c_str());
-  EXPECT_EQ(rtc::LS_VERBOSE, fme_->video_loglevel());
-  EXPECT_STREQ("test-video", fme_->video_logfilter().c_str());
 }
 
 TEST_F(ChannelManagerTest, SetVideoRtxEnabled) {

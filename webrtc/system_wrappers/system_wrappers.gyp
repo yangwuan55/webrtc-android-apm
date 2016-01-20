@@ -28,7 +28,6 @@
         'include/data_log.h',
         'include/data_log_c.h',
         'include/data_log_impl.h',
-        'include/event_tracer.h',
         'include/event_wrapper.h',
         'include/field_trial.h',
         'include/file_wrapper.h',
@@ -36,6 +35,7 @@
         'include/logcat_trace_context.h',
         'include/logging.h',
         'include/metrics.h',
+        'include/ntp_time.h',
         'include/ref_count.h',
         'include/rtp_to_ntp.h',
         'include/rw_lock_wrapper.h',
@@ -45,7 +45,6 @@
         'include/static_instance.h',
         'include/stl_util.h',
         'include/stringize_macros.h',
-        'include/thread_wrapper.h',
         'include/tick_util.h',
         'include/timestamp_extrapolator.h',
         'include/trace.h',
@@ -77,7 +76,6 @@
         'source/event_timer_posix.h',
         'source/event_timer_win.cc',
         'source/event_timer_win.h',
-        'source/event_tracer.cc',
         'source/file_impl.cc',
         'source/file_impl.h',
         'source/logcat_trace_context.cc',
@@ -93,11 +91,6 @@
         'source/sleep.cc',
         'source/sort.cc',
         'source/tick_util.cc',
-        'source/thread.cc',
-        'source/thread_posix.cc',
-        'source/thread_posix.h',
-        'source/thread_win.cc',
-        'source/thread_win.h',
         'source/timestamp_extrapolator.cc',
         'source/trace_impl.cc',
         'source/trace_impl.h',
@@ -206,13 +199,11 @@
       'sources': [
         'source/metrics_default.cc',
       ],
-      'dependencies': [
-        'system_wrappers',
-      ]
     }, {
       'target_name': 'system_wrappers_default',
       'type': 'static_library',
       'dependencies': [
+        'system_wrappers',
         'field_trial_default',
         'metrics_default',
       ]

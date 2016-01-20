@@ -32,6 +32,11 @@
             '<(DEPTH)/testing/android/native_test.gyp:native_test_native_code',
           ],
         }],
+        ['OS=="ios"', {
+          'dependencies': [
+            'api/api_tests.gyp:rtc_api_objc_test',
+          ]
+        }]
       ],
     },
     {
@@ -153,17 +158,27 @@
       'sources': [
         'audio/audio_receive_stream_unittest.cc',
         'audio/audio_send_stream_unittest.cc',
+        'audio/audio_state_unittest.cc',
+        'call/bitrate_allocator_unittest.cc',
         'call/bitrate_estimator_tests.cc',
         'call/call_unittest.cc',
         'call/packet_injection_tests.cc',
         'test/common_unittest.cc',
         'test/testsupport/metrics/video_metrics_unittest.cc',
+        'video/call_stats_unittest.cc',
+        'video/encoder_state_feedback_unittest.cc',
         'video/end_to_end_tests.cc',
+        'video/overuse_frame_detector_unittest.cc',
+        'video/payload_router_unittest.cc',
+        'video/report_block_stats_unittest.cc',
         'video/send_statistics_proxy_unittest.cc',
+        'video/stream_synchronization_unittest.cc',
         'video/video_capture_input_unittest.cc',
         'video/video_decoder_unittest.cc',
         'video/video_encoder_unittest.cc',
         'video/video_send_stream_tests.cc',
+        'video/vie_codec_unittest.cc',
+        'video/vie_remb_unittest.cc',
       ],
       'dependencies': [
         '<(DEPTH)/testing/gmock.gyp:gmock',
@@ -204,15 +219,18 @@
       'type': '<(gtest_target_type)',
       'sources': [
         'call/call_perf_tests.cc',
+        'call/rampup_tests.cc',
+        'call/rampup_tests.h',
         'modules/audio_coding/neteq/test/neteq_performance_unittest.cc',
+        'modules/audio_processing/audio_processing_performance_unittest.cc',
         'modules/remote_bitrate_estimator/remote_bitrate_estimators_test.cc',
         'video/full_stack.cc',
-        'video/rampup_tests.cc',
-        'video/rampup_tests.h',
       ],
       'dependencies': [
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
+        '<(webrtc_root)/modules/modules.gyp:audio_processing',
+        '<(webrtc_root)/modules/modules.gyp:audioproc_test_utils',
         '<(webrtc_root)/modules/modules.gyp:video_capture',
         '<(webrtc_root)/test/test.gyp:channel_transport',
         '<(webrtc_root)/voice_engine/voice_engine.gyp:voice_engine',

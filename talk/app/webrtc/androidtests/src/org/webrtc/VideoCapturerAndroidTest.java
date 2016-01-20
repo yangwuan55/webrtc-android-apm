@@ -29,15 +29,12 @@ package org.webrtc;
 import android.test.ActivityTestCase;
 import android.test.suitebuilder.annotation.MediumTest;
 import android.test.suitebuilder.annotation.SmallTest;
-import android.util.Log;
 import android.util.Size;
 
 import org.webrtc.CameraEnumerationAndroid.CaptureFormat;
 
 import java.util.HashSet;
 import java.util.Set;
-
-import javax.microedition.khronos.egl.EGL10;
 
 @SuppressWarnings("deprecation")
 public class VideoCapturerAndroidTest extends ActivityTestCase {
@@ -87,8 +84,10 @@ public class VideoCapturerAndroidTest extends ActivityTestCase {
 
   @SmallTest
   public void testCreateAndReleaseUsingTextures() {
+    EglBase eglBase = EglBase.create();
     VideoCapturerAndroidTestFixtures.release(
-        VideoCapturerAndroid.create("", null, EGL10.EGL_NO_CONTEXT));
+        VideoCapturerAndroid.create("", null, eglBase.getEglBaseContext()));
+    eglBase.release();
   }
 
   @SmallTest
@@ -108,12 +107,13 @@ public class VideoCapturerAndroidTest extends ActivityTestCase {
     VideoCapturerAndroidTestFixtures.startCapturerAndRender(capturer);
   }
 
-  // TODO(perkj): Enable once VideoCapture to texture support has landed in C++.
   @SmallTest
-  public void DISABLED_testStartVideoCapturerUsingTextures() throws InterruptedException {
+  public void testStartVideoCapturerUsingTextures() throws InterruptedException {
+    EglBase eglBase = EglBase.create();
     VideoCapturerAndroid capturer =
-        VideoCapturerAndroid.create("", null, EGL10.EGL_NO_CONTEXT);
+        VideoCapturerAndroid.create("", null, eglBase.getEglBaseContext());
     VideoCapturerAndroidTestFixtures.startCapturerAndRender(capturer);
+    eglBase.release();
   }
 
   @SmallTest
@@ -151,11 +151,13 @@ public class VideoCapturerAndroidTest extends ActivityTestCase {
     VideoCapturerAndroidTestFixtures.switchCamera(capturer);
   }
 
-  // TODO(perkj): Enable once VideoCapture to texture support has landed in C++.
   @SmallTest
-  public void DISABLED_testSwitchVideoCapturerUsingTextures() throws InterruptedException {
-    VideoCapturerAndroid capturer = VideoCapturerAndroid.create("", null, EGL10.EGL_NO_CONTEXT);
+  public void testSwitchVideoCapturerUsingTextures() throws InterruptedException {
+    EglBase eglBase = EglBase.create();
+    VideoCapturerAndroid capturer =
+        VideoCapturerAndroid.create("", null, eglBase.getEglBaseContext());
     VideoCapturerAndroidTestFixtures.switchCamera(capturer);
+    eglBase.release();
   }
 
   @MediumTest
@@ -179,12 +181,14 @@ public class VideoCapturerAndroidTest extends ActivityTestCase {
 
   @MediumTest
   public void testCameraCallsAfterStopUsingTextures() throws InterruptedException {
+    EglBase eglBase = EglBase.create();
     final String deviceName = CameraEnumerationAndroid.getDeviceName(0);
     final VideoCapturerAndroid capturer = VideoCapturerAndroid.create(deviceName, null,
-        EGL10.EGL_NO_CONTEXT);
+        eglBase.getEglBaseContext());
 
     VideoCapturerAndroidTestFixtures.cameraCallsAfterStop(capturer,
         getInstrumentation().getContext());
+    eglBase.release();
   }
 
   @SmallTest
@@ -195,11 +199,13 @@ public class VideoCapturerAndroidTest extends ActivityTestCase {
     VideoCapturerAndroidTestFixtures.stopRestartVideoSource(capturer);
   }
 
-  // TODO(perkj): Enable once VideoCapture to texture support has landed in C++.
   @SmallTest
-  public void DISABLED_testStopRestartVideoSourceUsingTextures() throws InterruptedException {
-    VideoCapturerAndroid capturer = VideoCapturerAndroid.create("", null, EGL10.EGL_NO_CONTEXT);
+  public void testStopRestartVideoSourceUsingTextures() throws InterruptedException {
+    EglBase eglBase = EglBase.create();
+    VideoCapturerAndroid capturer =
+        VideoCapturerAndroid.create("", null, eglBase.getEglBaseContext());
     VideoCapturerAndroidTestFixtures.stopRestartVideoSource(capturer);
+    eglBase.release();
   }
 
   @SmallTest
@@ -215,12 +221,49 @@ public class VideoCapturerAndroidTest extends ActivityTestCase {
 
   @SmallTest
   public void testStartStopWithDifferentResolutionsUsingTextures() throws InterruptedException {
+    EglBase eglBase = EglBase.create();
     String deviceName = CameraEnumerationAndroid.getDeviceName(0);
     VideoCapturerAndroid capturer =
-        VideoCapturerAndroid.create(deviceName, null, EGL10.EGL_NO_CONTEXT);
+        VideoCapturerAndroid.create(deviceName, null, eglBase.getEglBaseContext());
     VideoCapturerAndroidTestFixtures.startStopWithDifferentResolutions(capturer,
         getInstrumentation().getContext());
+    eglBase.release();
   }
+
+  @SmallTest
+  // This test that an error is reported if the camera is already opened
+  // when VideoCapturerAndroid is started.
+  public void testStartWhileCameraAlreadyOpened() throws InterruptedException {
+    String deviceName = CameraEnumerationAndroid.getDeviceName(0);
+    VideoCapturerAndroid capturer =
+        VideoCapturerAndroid.create(deviceName, null);
+    VideoCapturerAndroidTestFixtures.startWhileCameraIsAlreadyOpen(
+        capturer, getInstrumentation().getContext());
+  }
+
+  @SmallTest
+  // This test that VideoCapturerAndroid can be started, even if the camera is already opened
+  // if the camera is closed while VideoCapturerAndroid is re-trying to start.
+  public void testStartWhileCameraIsAlreadyOpenAndCloseCamera() throws InterruptedException {
+    String deviceName = CameraEnumerationAndroid.getDeviceName(0);
+    VideoCapturerAndroid capturer =
+        VideoCapturerAndroid.create(deviceName, null);
+    VideoCapturerAndroidTestFixtures.startWhileCameraIsAlreadyOpenAndCloseCamera(
+        capturer, getInstrumentation().getContext());
+  }
+
+  @SmallTest
+  // This test that VideoCapturerAndroid.stop can be called while VideoCapturerAndroid is
+  // re-trying to start.
+  public void startWhileCameraIsAlreadyOpenAndStop() throws InterruptedException {
+    String deviceName = CameraEnumerationAndroid.getDeviceName(0);
+    VideoCapturerAndroid capturer =
+        VideoCapturerAndroid.create(deviceName, null);
+    VideoCapturerAndroidTestFixtures.startWhileCameraIsAlreadyOpenAndStop(
+        capturer, getInstrumentation().getContext());
+  }
+
+
 
   @SmallTest
   // This test what happens if buffers are returned after the capturer have
@@ -235,11 +278,13 @@ public class VideoCapturerAndroidTest extends ActivityTestCase {
 
   @SmallTest
   public void testReturnBufferLateUsingTextures() throws InterruptedException {
+    EglBase eglBase = EglBase.create();
     String deviceName = CameraEnumerationAndroid.getDeviceName(0);
     VideoCapturerAndroid capturer =
-        VideoCapturerAndroid.create(deviceName, null, EGL10.EGL_NO_CONTEXT);
+        VideoCapturerAndroid.create(deviceName, null, eglBase.getEglBaseContext());
     VideoCapturerAndroidTestFixtures.returnBufferLate(capturer,
         getInstrumentation().getContext());
+    eglBase.release();
   }
 
   @MediumTest
@@ -251,11 +296,45 @@ public class VideoCapturerAndroidTest extends ActivityTestCase {
     VideoCapturerAndroidTestFixtures.returnBufferLateEndToEnd(capturer);
   }
 
-  // TODO(perkj): Enable once VideoCapture to texture support has landed in C++.
   @MediumTest
-  public void DISABLED_testReturnBufferLateEndToEndUsingTextures() throws InterruptedException {
+  public void testReturnBufferLateEndToEndUsingTextures() throws InterruptedException {
+    EglBase eglBase = EglBase.create();
     final VideoCapturerAndroid capturer =
-        VideoCapturerAndroid.create("", null, EGL10.EGL_NO_CONTEXT);
+        VideoCapturerAndroid.create("", null, eglBase.getEglBaseContext());
     VideoCapturerAndroidTestFixtures.returnBufferLateEndToEnd(capturer);
+    eglBase.release();
+  }
+
+  @MediumTest
+  // This test that CameraEventsHandler.onError is triggered if video buffers are not returned to
+  // the capturer.
+  public void testCameraFreezedEventOnBufferStarvationUsingTextures() throws InterruptedException {
+    EglBase eglBase = EglBase.create();
+    VideoCapturerAndroidTestFixtures.CameraEvents cameraEvents =
+        VideoCapturerAndroidTestFixtures.createCameraEvents();
+    VideoCapturerAndroid capturer = VideoCapturerAndroid.create("", cameraEvents,
+        eglBase.getEglBaseContext());
+    VideoCapturerAndroidTestFixtures.cameraFreezedEventOnBufferStarvationUsingTextures(capturer,
+        cameraEvents, getInstrumentation().getContext());
+    eglBase.release();
+  }
+
+  @MediumTest
+  // This test that frames forwarded to a renderer is scaled if onOutputFormatRequest is
+  // called. This test both Java and C++ parts of of the stack.
+  public void testScaleCameraOutput() throws InterruptedException {
+    VideoCapturerAndroid capturer = VideoCapturerAndroid.create("", null);
+    VideoCapturerAndroidTestFixtures.scaleCameraOutput(capturer);
+  }
+
+  @MediumTest
+  // This test that frames forwarded to a renderer is scaled if onOutputFormatRequest is
+  // called. This test both Java and C++ parts of of the stack.
+  public void testScaleCameraOutputUsingTextures() throws InterruptedException {
+    EglBase eglBase = EglBase.create();
+    VideoCapturerAndroid capturer =
+        VideoCapturerAndroid.create("", null, eglBase.getEglBaseContext());
+    VideoCapturerAndroidTestFixtures.scaleCameraOutput(capturer);
+    eglBase.release();
   }
 }

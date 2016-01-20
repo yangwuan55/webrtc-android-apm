@@ -12,9 +12,10 @@
 
 #include <sstream>
 
+#include "webrtc/base/arraysize.h"
 #include "webrtc/base/common.h"
 #include "webrtc/base/scoped_ptr.h"
-#include "webrtc/modules/interface/module_common_types.h"
+#include "webrtc/modules/include/module_common_types.h"
 #include "webrtc/modules/remote_bitrate_estimator/test/bwe_test_framework.h"
 #include "webrtc/modules/remote_bitrate_estimator/test/metric_recorder.h"
 #include "webrtc/modules/remote_bitrate_estimator/test/packet_receiver.h"
@@ -662,7 +663,7 @@ void BweTest::RunSelfFairness(BandwidthEstimatorType bwe_type) {
 void BweTest::RunRoundTripTimeFairness(BandwidthEstimatorType bwe_type) {
   const int kAllFlowIds[] = {0, 1, 2, 3, 4};  // Five RMCAT flows.
   const int64_t kAllOneWayDelayMs[] = {10, 25, 50, 100, 150};
-  const size_t kNumFlows = ARRAY_SIZE(kAllFlowIds);
+  const size_t kNumFlows = arraysize(kAllFlowIds);
   rtc::scoped_ptr<AdaptiveVideoSource> sources[kNumFlows];
   rtc::scoped_ptr<VideoSender> senders[kNumFlows];
   rtc::scoped_ptr<MetricRecorder> metric_recorders[kNumFlows];
@@ -774,10 +775,10 @@ void BweTest::RunMultipleShortTcpFairness(
   const int kAllTcpFlowIds[] = {2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
 
   assert(tcp_starting_times_ms.size() == tcp_file_sizes_bytes.size() &&
-         tcp_starting_times_ms.size() == ARRAY_SIZE(kAllTcpFlowIds));
+         tcp_starting_times_ms.size() == arraysize(kAllTcpFlowIds));
 
-  const size_t kNumRmcatFlows = ARRAY_SIZE(kAllRmcatFlowIds);
-  const size_t kNumTotalFlows = kNumRmcatFlows + ARRAY_SIZE(kAllTcpFlowIds);
+  const size_t kNumRmcatFlows = arraysize(kAllRmcatFlowIds);
+  const size_t kNumTotalFlows = kNumRmcatFlows + arraysize(kAllTcpFlowIds);
 
   rtc::scoped_ptr<AdaptiveVideoSource> sources[kNumRmcatFlows];
   rtc::scoped_ptr<PacketSender> senders[kNumTotalFlows];
@@ -869,7 +870,7 @@ void BweTest::RunMultipleShortTcpFairness(
 // During the test, one of the flows is paused and later resumed.
 void BweTest::RunPauseResumeFlows(BandwidthEstimatorType bwe_type) {
   const int kAllFlowIds[] = {0, 1, 2};  // Three RMCAT flows.
-  const size_t kNumFlows = ARRAY_SIZE(kAllFlowIds);
+  const size_t kNumFlows = arraysize(kAllFlowIds);
 
   rtc::scoped_ptr<AdaptiveVideoSource> sources[kNumFlows];
   rtc::scoped_ptr<VideoSender> senders[kNumFlows];
@@ -947,7 +948,7 @@ std::vector<int> BweTest::GetFileSizesBytes(int num_files) {
   const int kMinKbytes = 100;
   const int kMaxKbytes = 1000;
 
-  test::Random random(0x12345678);
+  Random random(0x12345678);
   std::vector<int> tcp_file_sizes_bytes;
 
   while (num_files-- > 0) {
@@ -960,7 +961,7 @@ std::vector<int> BweTest::GetFileSizesBytes(int num_files) {
 std::vector<int64_t> BweTest::GetStartingTimesMs(int num_files) {
   // OFF state behaves as an exp. distribution with mean = 10 seconds.
   const float kMeanMs = 10000.0f;
-  test::Random random(0x12345678);
+  Random random(0x12345678);
 
   std::vector<int64_t> tcp_starting_times_ms;
 

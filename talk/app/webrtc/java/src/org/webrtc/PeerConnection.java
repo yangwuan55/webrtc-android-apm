@@ -28,7 +28,6 @@
 
 package org.webrtc;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
@@ -151,6 +150,7 @@ public class PeerConnection {
     public int audioJitterBufferMaxPackets;
     public boolean audioJitterBufferFastAccelerate;
     public int iceConnectionReceivingTimeout;
+    public int iceBackupCandidatePairPingInterval;
     public KeyType keyType;
     public ContinualGatheringPolicy continualGatheringPolicy;
 
@@ -163,6 +163,7 @@ public class PeerConnection {
       audioJitterBufferMaxPackets = 50;
       audioJitterBufferFastAccelerate = false;
       iceConnectionReceivingTimeout = -1;
+      iceBackupCandidatePairPingInterval = -1;
       keyType = KeyType.ECDSA;
       continualGatheringPolicy = ContinualGatheringPolicy.GATHER_ONCE;
     }
@@ -221,6 +222,14 @@ public class PeerConnection {
   public void removeStream(MediaStream stream) {
     nativeRemoveLocalStream(stream.nativeStream);
     localStreams.remove(stream);
+  }
+
+  public RtpSender createSender(String kind, String stream_id) {
+    RtpSender new_sender = nativeCreateSender(kind, stream_id);
+    if (new_sender != null) {
+      senders.add(new_sender);
+    }
+    return new_sender;
   }
 
   // Note that calling getSenders will dispose of the senders previously
@@ -287,6 +296,8 @@ public class PeerConnection {
 
   private native boolean nativeGetStats(
       StatsObserver observer, long nativeTrack);
+
+  private native RtpSender nativeCreateSender(String kind, String stream_id);
 
   private native List<RtpSender> nativeGetSenders();
 

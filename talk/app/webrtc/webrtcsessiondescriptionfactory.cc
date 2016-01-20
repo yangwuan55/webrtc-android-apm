@@ -27,6 +27,8 @@
 
 #include "talk/app/webrtc/webrtcsessiondescriptionfactory.h"
 
+#include <utility>
+
 #include "talk/app/webrtc/dtlsidentitystore.h"
 #include "talk/app/webrtc/jsep.h"
 #include "talk/app/webrtc/jsepsessiondescription.h"
@@ -99,12 +101,12 @@ void WebRtcIdentityRequestObserver::OnSuccess(
       der_private_key.length());
   rtc::scoped_ptr<rtc::SSLIdentity> identity(
       rtc::SSLIdentity::FromPEMStrings(pem_key, pem_cert));
-  SignalCertificateReady(rtc::RTCCertificate::Create(identity.Pass()));
+  SignalCertificateReady(rtc::RTCCertificate::Create(std::move(identity)));
 }
 
 void WebRtcIdentityRequestObserver::OnSuccess(
     rtc::scoped_ptr<rtc::SSLIdentity> identity) {
-  SignalCertificateReady(rtc::RTCCertificate::Create(identity.Pass()));
+  SignalCertificateReady(rtc::RTCCertificate::Create(std::move(identity)));
 }
 
 // static
@@ -143,7 +145,7 @@ WebRtcSessionDescriptionFactory::WebRtcSessionDescriptionFactory(
       // to just use a random number as session id and start version from
       // |kInitSessionVersion|.
       session_version_(kInitSessionVersion),
-      dtls_identity_store_(dtls_identity_store.Pass()),
+      dtls_identity_store_(std::move(dtls_identity_store)),
       identity_request_observer_(identity_request_observer),
       session_(session),
       session_id_(session_id),
@@ -177,7 +179,7 @@ WebRtcSessionDescriptionFactory::WebRtcSessionDescriptionFactory(
     : WebRtcSessionDescriptionFactory(
           signaling_thread,
           channel_manager,
-          dtls_identity_store.Pass(),
+          std::move(dtls_identity_store),
           new rtc::RefCountedObject<WebRtcIdentityRequestObserver>(),
           session,
           session_id,
@@ -390,7 +392,9 @@ void WebRtcSessionDescriptionFactory::InternalCreateOffer(
     return;
   }
   if (session_->local_description() &&
-      !request.options.transport_options.ice_restart) {
+      !request.options.audio_transport_options.ice_restart &&
+      !request.options.video_transport_options.ice_restart &&
+      !request.options.data_transport_options.ice_restart) {
     // Include all local ice candidates in the SessionDescription unless
     // the an ice restart has been requested.
     CopyCandidatesFromSessionDescription(session_->local_description(), offer);
@@ -403,12 +407,25 @@ void WebRtcSessionDescriptionFactory::InternalCreateAnswer(
   // According to http://tools.ietf.org/html/rfc5245#section-9.2.1.1
   // an answer should also contain new ice ufrag and password if an offer has
   // been received with new ufrag and password.
-  request.options.transport_options.ice_restart = session_->IceRestartPending();
+  request.options.audio_transport_options.ice_restart =
+      session_->IceRestartPending();
+  request.options.video_transport_options.ice_restart =
+      session_->IceRestartPending();
+  request.options.data_transport_options.ice_restart =
+      session_->IceRestartPending();
   // We should pass current ssl role to the transport description factory, if
   // there is already an existing ongoing session.
   rtc::SSLRole ssl_role;
-  if (session_->GetSslRole(&ssl_role)) {
-    request.options.transport_options.prefer_passive_role =
+  if (session_->GetSslRole(session_->voice_channel(), &ssl_role)) {
+    request.options.audio_transport_options.prefer_passive_role =
+        (rtc::SSL_SERVER == ssl_role);
+  }
+  if (session_->GetSslRole(session_->video_channel(), &ssl_role)) {
+    request.options.video_transport_options.prefer_passive_role =
+        (rtc::SSL_SERVER == ssl_role);
+  }
+  if (session_->GetSslRole(session_->data_channel(), &ssl_role)) {
+    request.options.data_transport_options.prefer_passive_role =
         (rtc::SSL_SERVER == ssl_role);
   }
 
@@ -437,7 +454,9 @@ void WebRtcSessionDescriptionFactory::InternalCreateAnswer(
     return;
   }
   if (session_->local_description() &&
-      !request.options.transport_options.ice_restart) {
+      !request.options.audio_transport_options.ice_restart &&
+      !request.options.video_transport_options.ice_restart &&
+      !request.options.data_transport_options.ice_restart) {
     // Include all local ice candidates in the SessionDescription unless
     // the remote peer has requested an ice restart.
     CopyCandidatesFromSessionDescription(session_->local_description(), answer);

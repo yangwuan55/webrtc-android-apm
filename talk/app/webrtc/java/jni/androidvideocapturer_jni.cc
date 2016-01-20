@@ -29,8 +29,9 @@
 #include "talk/app/webrtc/java/jni/androidvideocapturer_jni.h"
 #include "talk/app/webrtc/java/jni/classreferenceholder.h"
 #include "talk/app/webrtc/java/jni/native_handle_impl.h"
+#include "talk/app/webrtc/java/jni/surfacetexturehelper_jni.h"
+#include "third_party/libyuv/include/libyuv/convert.h"
 #include "webrtc/base/bind.h"
-#include "webrtc/common_video/libyuv/include/webrtc_libyuv.h"
 
 namespace webrtc_jni {
 
@@ -47,15 +48,19 @@ int AndroidVideoCapturerJni::SetAndroidObjects(JNIEnv* jni,
   return 0;
 }
 
-AndroidVideoCapturerJni::AndroidVideoCapturerJni(JNIEnv* jni,
-                                                 jobject j_video_capturer)
-    : j_capturer_global_(jni, j_video_capturer),
+AndroidVideoCapturerJni::AndroidVideoCapturerJni(
+    JNIEnv* jni,
+    jobject j_video_capturer,
+    jobject j_surface_texture_helper)
+    : j_video_capturer_(jni, j_video_capturer),
       j_video_capturer_class_(
           jni, FindClass(jni, "org/webrtc/VideoCapturerAndroid")),
       j_observer_class_(
           jni,
           FindClass(jni,
                     "org/webrtc/VideoCapturerAndroid$NativeObserver")),
+      surface_texture_helper_(new rtc::RefCountedObject<SurfaceTextureHelper>(
+          jni, j_surface_texture_helper)),
       capturer_(nullptr) {
   LOG(LS_INFO) << "AndroidVideoCapturerJni ctor";
   thread_checker_.DetachFromThread();
@@ -64,7 +69,7 @@ AndroidVideoCapturerJni::AndroidVideoCapturerJni(JNIEnv* jni,
 AndroidVideoCapturerJni::~AndroidVideoCapturerJni() {
   LOG(LS_INFO) << "AndroidVideoCapturerJni dtor";
   jni()->CallVoidMethod(
-      *j_capturer_global_,
+      *j_video_capturer_,
       GetMethodID(jni(), *j_video_capturer_class_, "release", "()V"));
   CHECK_EXCEPTION(jni()) << "error during VideoCapturerAndroid.release()";
 }
@@ -90,7 +95,7 @@ void AndroidVideoCapturerJni::Start(int width, int height, int framerate,
       jni(), *j_video_capturer_class_, "startCapture",
       "(IIILandroid/content/Context;"
       "Lorg/webrtc/VideoCapturerAndroid$CapturerObserver;)V");
-  jni()->CallVoidMethod(*j_capturer_global_,
+  jni()->CallVoidMethod(*j_video_capturer_,
                         m, width, height,
                         framerate,
                         application_context_,
@@ -109,7 +114,7 @@ void AndroidVideoCapturerJni::Stop() {
   }
   jmethodID m = GetMethodID(jni(), *j_video_capturer_class_,
                             "stopCapture", "()V");
-  jni()->CallVoidMethod(*j_capturer_global_, m);
+  jni()->CallVoidMethod(*j_video_capturer_, m);
   CHECK_EXCEPTION(jni()) << "error during VideoCapturerAndroid.stopCapture";
   LOG(LS_INFO) << "AndroidVideoCapturerJni stop done";
 }
@@ -127,19 +132,12 @@ void AndroidVideoCapturerJni::AsyncCapturerInvoke(
   invoker_->AsyncInvoke<void>(rtc::Bind(method, capturer_, args...));
 }
 
-void AndroidVideoCapturerJni::ReturnBuffer(int64_t time_stamp) {
-  jmethodID m = GetMethodID(jni(), *j_video_capturer_class_,
-                            "returnBuffer", "(J)V");
-  jni()->CallVoidMethod(*j_capturer_global_, m, time_stamp);
-  CHECK_EXCEPTION(jni()) << "error during VideoCapturerAndroid.returnBuffer";
-}
-
 std::string AndroidVideoCapturerJni::GetSupportedFormats() {
   jmethodID m =
       GetMethodID(jni(), *j_video_capturer_class_,
                   "getSupportedFormatsAsJson", "()Ljava/lang/String;");
   jstring j_json_caps =
-      (jstring) jni()->CallObjectMethod(*j_capturer_global_, m);
+      (jstring) jni()->CallObjectMethod(*j_video_capturer_, m);
   CHECK_EXCEPTION(jni()) << "error during supportedFormatsAsJson";
   return JavaToStdString(jni(), j_json_caps);
 }
@@ -158,46 +156,33 @@ void AndroidVideoCapturerJni::OnMemoryBufferFrame(void* video_frame,
                                                   int rotation,
                                                   int64_t timestamp_ns) {
   const uint8_t* y_plane = static_cast<uint8_t*>(video_frame);
-  // Android guarantees that the stride is a multiple of 16.
-  // http://developer.android.com/reference/android/hardware/Camera.Parameters.html#setPreviewFormat%28int%29
-  int y_stride;
-  int uv_stride;
-  webrtc::Calc16ByteAlignedStride(width, &y_stride, &uv_stride);
-  const uint8_t* v_plane = y_plane + y_stride * height;
-  const uint8_t* u_plane =
-      v_plane + uv_stride * webrtc::AlignInt(height, 2) / 2;
+  const uint8_t* vu_plane = y_plane + width * height;
 
-  // Wrap the Java buffer, and call ReturnBuffer() in the wrapped
-  // VideoFrameBuffer destructor.
-  rtc::scoped_refptr<webrtc::VideoFrameBuffer> buffer(
-      new rtc::RefCountedObject<webrtc::WrappedI420Buffer>(
-          width, height, y_plane, y_stride, u_plane, uv_stride, v_plane,
-          uv_stride,
-          rtc::Bind(&AndroidVideoCapturerJni::ReturnBuffer, this,
-                    timestamp_ns)));
+  rtc::scoped_refptr<webrtc::VideoFrameBuffer> buffer =
+      buffer_pool_.CreateBuffer(width, height);
+  libyuv::NV21ToI420(
+      y_plane, width,
+      vu_plane, width,
+      buffer->MutableData(webrtc::kYPlane), buffer->stride(webrtc::kYPlane),
+      buffer->MutableData(webrtc::kUPlane), buffer->stride(webrtc::kUPlane),
+      buffer->MutableData(webrtc::kVPlane), buffer->stride(webrtc::kVPlane),
+      width, height);
   AsyncCapturerInvoke("OnIncomingFrame",
                       &webrtc::AndroidVideoCapturer::OnIncomingFrame,
                       buffer, rotation, timestamp_ns);
 }
 
-void AndroidVideoCapturerJni::OnTextureFrame(
-    int width,
-    int height,
-    int64_t timestamp_ns,
-    const NativeTextureHandleImpl& handle) {
-  // TODO(magjed): Fix this. See bug webrtc:4993.
-  RTC_NOTREACHED()
-      << "The rest of the stack for Android expects the native "
-         "handle to be a NativeHandleImpl with a SurfaceTexture, not a "
-         "NativeTextureHandleImpl";
+void AndroidVideoCapturerJni::OnTextureFrame(int width,
+                                             int height,
+                                             int rotation,
+                                             int64_t timestamp_ns,
+                                             const NativeHandleImpl& handle) {
   rtc::scoped_refptr<webrtc::VideoFrameBuffer> buffer(
-      new rtc::RefCountedObject<AndroidTextureBuffer>(
-          width, height, handle,
-          rtc::Bind(&AndroidVideoCapturerJni::ReturnBuffer, this,
-                    timestamp_ns)));
+      surface_texture_helper_->CreateTextureFrame(width, height, handle));
+
   AsyncCapturerInvoke("OnIncomingFrame",
                       &webrtc::AndroidVideoCapturer::OnIncomingFrame,
-                      buffer, 0, timestamp_ns);
+                      buffer, rotation, timestamp_ns);
 }
 
 void AndroidVideoCapturerJni::OnOutputFormatRequest(int width,
@@ -216,13 +201,6 @@ JOW(void,
         jint width, jint height, jint rotation, jlong timestamp) {
   jboolean is_copy = true;
   jbyte* bytes = jni->GetByteArrayElements(j_frame, &is_copy);
-  // If this is a copy of the original frame, it means that the memory
-  // is not direct memory and thus VideoCapturerAndroid does not guarantee
-  // that the memory is valid when we have released |j_frame|.
-  // TODO(magjed): Move ReleaseByteArrayElements() into ReturnBuffer() and
-  // remove this check.
-  RTC_CHECK(!is_copy)
-      << "NativeObserver_nativeOnFrameCaptured: frame is a copy";
   reinterpret_cast<AndroidVideoCapturerJni*>(j_capturer)
       ->OnMemoryBufferFrame(bytes, length, width, height, rotation, timestamp);
   jni->ReleaseByteArrayElements(j_frame, bytes, JNI_ABORT);
@@ -231,11 +209,11 @@ JOW(void,
 JOW(void, VideoCapturerAndroid_00024NativeObserver_nativeOnTextureFrameCaptured)
     (JNIEnv* jni, jclass, jlong j_capturer, jint j_width, jint j_height,
         jint j_oes_texture_id, jfloatArray j_transform_matrix,
-        jlong j_timestamp) {
+        jint j_rotation, jlong j_timestamp) {
    reinterpret_cast<AndroidVideoCapturerJni*>(j_capturer)
-         ->OnTextureFrame(j_width, j_height, j_timestamp,
-                          NativeTextureHandleImpl(jni, j_oes_texture_id,
-                                                  j_transform_matrix));
+         ->OnTextureFrame(j_width, j_height, j_rotation, j_timestamp,
+                          NativeHandleImpl(jni, j_oes_texture_id,
+                                           j_transform_matrix));
 }
 
 JOW(void, VideoCapturerAndroid_00024NativeObserver_nativeCapturerStarted)
@@ -254,9 +232,11 @@ JOW(void, VideoCapturerAndroid_00024NativeObserver_nativeOnOutputFormatRequest)
 }
 
 JOW(jlong, VideoCapturerAndroid_nativeCreateVideoCapturer)
-    (JNIEnv* jni, jclass, jobject j_video_capturer) {
+    (JNIEnv* jni, jclass,
+     jobject j_video_capturer, jobject j_surface_texture_helper) {
   rtc::scoped_refptr<webrtc::AndroidVideoCapturerDelegate> delegate =
-      new rtc::RefCountedObject<AndroidVideoCapturerJni>(jni, j_video_capturer);
+      new rtc::RefCountedObject<AndroidVideoCapturerJni>(
+          jni, j_video_capturer, j_surface_texture_helper);
   rtc::scoped_ptr<cricket::VideoCapturer> capturer(
       new webrtc::AndroidVideoCapturer(delegate));
   // Caller takes ownership of the cricket::VideoCapturer* pointer.

@@ -19,11 +19,23 @@
 
 #include "webrtc/base/atomicops.h"
 #include "webrtc/base/checks.h"
+#include "webrtc/base/criticalsection.h"
 #include "webrtc/base/logging.h"
+#include "webrtc/base/thread_annotations.h"
 #include "webrtc/modules/audio_device/fine_audio_buffer.h"
-#include "webrtc/modules/utility/interface/helpers_ios.h"
+#include "webrtc/modules/utility/include/helpers_ios.h"
 
 namespace webrtc {
+
+// Protects |g_audio_session_users|.
+static rtc::GlobalLockPod g_lock;
+
+// Counts number of users (=instances of this object) who needs an active
+// audio session. This variable is used to ensure that we only activate an audio
+// session for the first user and deactivate it for the last.
+// Member is static to ensure that the value is counted for all instances
+// and not per instance.
+static int g_audio_session_users GUARDED_BY(g_lock) = 0;
 
 #define LOGI() LOG(LS_INFO) << "AudioDeviceIOS::"
 
@@ -74,25 +86,62 @@ const UInt32 kBytesPerSample = 2;
 // Can most likely be removed.
 const UInt16 kFixedPlayoutDelayEstimate = 30;
 const UInt16 kFixedRecordDelayEstimate = 30;
+// Calls to AudioUnitInitialize() can fail if called back-to-back on different
+// ADM instances. A fall-back solution is to allow multiple sequential calls
+// with as small delay between each. This factor sets the max number of allowed
+// initialization attempts.
+const int kMaxNumberOfAudioUnitInitializeAttempts = 5;
+
 
 using ios::CheckAndLogError;
+
+// Verifies that the current audio session supports input audio and that the
+// required category and mode are enabled.
+static bool VerifyAudioSession(AVAudioSession* session) {
+  LOG(LS_INFO) << "VerifyAudioSession";
+  // Ensure that the device currently supports audio input.
+  if (!session.isInputAvailable) {
+    LOG(LS_ERROR) << "No audio input path is available!";
+    return false;
+  }
+
+  // Ensure that the required category and mode are actually activated.
+  if (![session.category isEqualToString:AVAudioSessionCategoryPlayAndRecord]) {
+    LOG(LS_ERROR)
+        << "Failed to set category to AVAudioSessionCategoryPlayAndRecord";
+    return false;
+  }
+  if (![session.mode isEqualToString:AVAudioSessionModeVoiceChat]) {
+    LOG(LS_ERROR) << "Failed to set mode to AVAudioSessionModeVoiceChat";
+    return false;
+  }
+  return true;
+}
 
 // Activates an audio session suitable for full duplex VoIP sessions when
 // |activate| is true. Also sets the preferred sample rate and IO buffer
 // duration. Deactivates an active audio session if |activate| is set to false.
-static void ActivateAudioSession(AVAudioSession* session, bool activate) {
+static bool ActivateAudioSession(AVAudioSession* session, bool activate)
+    EXCLUSIVE_LOCKS_REQUIRED(g_lock) {
   LOG(LS_INFO) << "ActivateAudioSession(" << activate << ")";
   @autoreleasepool {
     NSError* error = nil;
     BOOL success = NO;
 
-    // Deactivate the audio session and return if |activate| is false.
     if (!activate) {
-      success = [session setActive:NO error:&error];
-      RTC_DCHECK(CheckAndLogError(success, error));
-      return;
+      // Deactivate the audio session using an extra option and then return.
+      // AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation is used to
+      // ensure that other audio sessions that were interrupted by our session
+      // can return to their active state. It is recommended for VoIP apps to
+      // use this option.
+      success = [session
+            setActive:NO
+          withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation
+                error:&error];
+      return CheckAndLogError(success, error);
     }
 
+    // Go ahead and active our own audio session since |activate| is true.
     // Use a category which supports simultaneous recording and playback.
     // By default, using this category implies that our app’s audio is
     // nonmixable, hence activating the session will interrupt any other
@@ -121,7 +170,6 @@ static void ActivateAudioSession(AVAudioSession* session, bool activate) {
     RTC_DCHECK(CheckAndLogError(success, error));
 
     // Set the preferred audio I/O buffer duration, in seconds.
-    // TODO(henrika): add more comments here.
     error = nil;
     success = [session setPreferredIOBufferDuration:kPreferredIOBufferDuration
                                               error:&error];
@@ -131,13 +179,15 @@ static void ActivateAudioSession(AVAudioSession* session, bool activate) {
     // session (e.g. phone call) has higher priority than ours.
     error = nil;
     success = [session setActive:YES error:&error];
-    RTC_DCHECK(CheckAndLogError(success, error));
-    RTC_CHECK(session.isInputAvailable) << "No input path is available!";
+    if (!CheckAndLogError(success, error)) {
+      return false;
+    }
 
-    // Ensure that category and mode are actually activated.
-    RTC_DCHECK(
-        [session.category isEqualToString:AVAudioSessionCategoryPlayAndRecord]);
-    RTC_DCHECK([session.mode isEqualToString:AVAudioSessionModeVoiceChat]);
+    // Ensure that the active audio session has the correct category and mode.
+    if (!VerifyAudioSession(session)) {
+      LOG(LS_ERROR) << "Failed to verify audio session category and mode";
+      return false;
+    }
 
     // Try to set the preferred number of hardware audio channels. These calls
     // must be done after setting the audio session’s category and mode and
@@ -156,7 +206,52 @@ static void ActivateAudioSession(AVAudioSession* session, bool activate) {
         [session setPreferredOutputNumberOfChannels:kPreferredNumberOfChannels
                                               error:&error];
     RTC_DCHECK(CheckAndLogError(success, error));
+    return true;
   }
+}
+
+// An application can create more than one ADM and start audio streaming
+// for all of them. It is essential that we only activate the app's audio
+// session once (for the first one) and deactivate it once (for the last).
+static bool ActivateAudioSession() {
+  LOGI() << "ActivateAudioSession";
+  rtc::GlobalLockScope ls(&g_lock);
+  if (g_audio_session_users == 0) {
+    // The system provides an audio session object upon launch of an
+    // application. However, we must initialize the session in order to
+    // handle interruptions. Implicit initialization occurs when obtaining
+    // a reference to the AVAudioSession object.
+    AVAudioSession* session = [AVAudioSession sharedInstance];
+    // Try to activate the audio session and ask for a set of preferred audio
+    // parameters.
+    if (!ActivateAudioSession(session, true)) {
+      LOG(LS_ERROR) << "Failed to activate the audio session";
+      return false;
+    }
+    LOG(LS_INFO) << "The audio session is now activated";
+  }
+  ++g_audio_session_users;
+  LOG(LS_INFO) << "Number of audio session users: " << g_audio_session_users;
+  return true;
+}
+
+// If more than one object is using the audio session, ensure that only the
+// last object deactivates. Apple recommends: "activate your audio session
+// only as needed and deactivate it when you are not using audio".
+static bool DeactivateAudioSession() {
+  LOGI() << "DeactivateAudioSession";
+  rtc::GlobalLockScope ls(&g_lock);
+  if (g_audio_session_users == 1) {
+    AVAudioSession* session = [AVAudioSession sharedInstance];
+    if (!ActivateAudioSession(session, false)) {
+      LOG(LS_ERROR) << "Failed to deactivate the audio session";
+      return false;
+    }
+    LOG(LS_INFO) << "Our audio session is now deactivated";
+  }
+  --g_audio_session_users;
+  LOG(LS_INFO) << "Number of audio session users: " << g_audio_session_users;
+  return true;
 }
 
 #if !defined(NDEBUG)
@@ -198,12 +293,13 @@ AudioDeviceIOS::AudioDeviceIOS()
       initialized_(false),
       rec_is_initialized_(false),
       play_is_initialized_(false),
-      audio_interruption_observer_(nullptr) {
+      audio_interruption_observer_(nullptr),
+      route_change_observer_(nullptr) {
   LOGI() << "ctor" << ios::GetCurrentThreadDescription();
 }
 
 AudioDeviceIOS::~AudioDeviceIOS() {
-  LOGI() << "~dtor";
+  LOGI() << "~dtor" << ios::GetCurrentThreadDescription();
   RTC_DCHECK(thread_checker_.CalledOnValidThread());
   Terminate();
 }
@@ -245,8 +341,16 @@ int32_t AudioDeviceIOS::Terminate() {
   if (!initialized_) {
     return 0;
   }
-  ShutdownPlayOrRecord();
+  StopPlayout();
+  StopRecording();
   initialized_ = false;
+  {
+    rtc::GlobalLockScope ls(&g_lock);
+    if (g_audio_session_users != 0) {
+      LOG(LS_WARNING) << "Object is destructed with an active audio session";
+    }
+    RTC_DCHECK_GE(g_audio_session_users, 0);
+  }
   return 0;
 }
 
@@ -258,7 +362,7 @@ int32_t AudioDeviceIOS::InitPlayout() {
   RTC_DCHECK(!playing_);
   if (!rec_is_initialized_) {
     if (!InitPlayOrRecord()) {
-      LOG_F(LS_ERROR) << "InitPlayOrRecord failed!";
+      LOG_F(LS_ERROR) << "InitPlayOrRecord failed for InitPlayout!";
       return -1;
     }
   }
@@ -274,7 +378,7 @@ int32_t AudioDeviceIOS::InitRecording() {
   RTC_DCHECK(!recording_);
   if (!play_is_initialized_) {
     if (!InitPlayOrRecord()) {
-      LOG_F(LS_ERROR) << "InitPlayOrRecord failed!";
+      LOG_F(LS_ERROR) << "InitPlayOrRecord failed for InitRecording!";
       return -1;
     }
   }
@@ -291,9 +395,11 @@ int32_t AudioDeviceIOS::StartPlayout() {
   if (!recording_) {
     OSStatus result = AudioOutputUnitStart(vpio_unit_);
     if (result != noErr) {
-      LOG_F(LS_ERROR) << "AudioOutputUnitStart failed: " << result;
+      LOG_F(LS_ERROR) << "AudioOutputUnitStart failed for StartPlayout: "
+                      << result;
       return -1;
     }
+    LOG(LS_INFO) << "Voice-Processing I/O audio unit is now started";
   }
   rtc::AtomicOps::ReleaseStore(&playing_, 1);
   return 0;
@@ -322,9 +428,11 @@ int32_t AudioDeviceIOS::StartRecording() {
   if (!playing_) {
     OSStatus result = AudioOutputUnitStart(vpio_unit_);
     if (result != noErr) {
-      LOG_F(LS_ERROR) << "AudioOutputUnitStart failed: " << result;
+      LOG_F(LS_ERROR) << "AudioOutputUnitStart failed for StartRecording: "
+                      << result;
       return -1;
     }
+    LOG(LS_INFO) << "Voice-Processing I/O audio unit is now started";
   }
   rtc::AtomicOps::ReleaseStore(&recording_, 1);
   return 0;
@@ -474,11 +582,12 @@ void AudioDeviceIOS::RegisterNotificationObservers() {
             LOG(LS_INFO) << " OldDeviceUnavailable";
             break;
           case AVAudioSessionRouteChangeReasonCategoryChange:
+            // It turns out that we see this notification (at least in iOS 9.2)
+            // when making a switch from a BT device to e.g. Speaker using the
+            // iOS Control Center and that we therefore must check if the sample
+            // rate has changed. And if so is the case, restart the audio unit.
             LOG(LS_INFO) << " CategoryChange";
             LOG(LS_INFO) << " New category: " << ios::GetAudioSessionCategory();
-            // Don't see this as route change since it can be triggered in
-            // combination with session interruptions as well.
-            valid_route_change = false;
             break;
           case AVAudioSessionRouteChangeReasonOverride:
             LOG(LS_INFO) << " Override";
@@ -490,9 +599,11 @@ void AudioDeviceIOS::RegisterNotificationObservers() {
             LOG(LS_INFO) << " NoSuitableRouteForCategory";
             break;
           case AVAudioSessionRouteChangeReasonRouteConfigurationChange:
-            // Ignore this type of route change since we are focusing
+            // The set of input and output ports has not changed, but their
+            // configuration has, e.g., a port’s selected data source has
+            // changed. Ignore this type of route change since we are focusing
             // on detecting headset changes.
-            LOG(LS_INFO) << " RouteConfigurationChange";
+            LOG(LS_INFO) << " RouteConfigurationChange (ignored)";
             valid_route_change = false;
             break;
         }
@@ -630,7 +741,7 @@ void AudioDeviceIOS::SetupAudioBuffersForActiveAudioSession() {
 
 bool AudioDeviceIOS::SetupAndInitializeVoiceProcessingAudioUnit() {
   LOGI() << "SetupAndInitializeVoiceProcessingAudioUnit";
-  RTC_DCHECK(!vpio_unit_);
+  RTC_DCHECK(!vpio_unit_) << "VoiceProcessingIO audio unit already exists";
   // Create an audio component description to identify the Voice-Processing
   // I/O audio unit.
   AudioComponentDescription vpio_unit_description;
@@ -639,34 +750,48 @@ bool AudioDeviceIOS::SetupAndInitializeVoiceProcessingAudioUnit() {
   vpio_unit_description.componentManufacturer = kAudioUnitManufacturer_Apple;
   vpio_unit_description.componentFlags = 0;
   vpio_unit_description.componentFlagsMask = 0;
+
   // Obtain an audio unit instance given the description.
   AudioComponent found_vpio_unit_ref =
       AudioComponentFindNext(nullptr, &vpio_unit_description);
 
   // Create a Voice-Processing IO audio unit.
-  LOG_AND_RETURN_IF_ERROR(
-      AudioComponentInstanceNew(found_vpio_unit_ref, &vpio_unit_),
-      "Failed to create a VoiceProcessingIO audio unit");
+  OSStatus result = noErr;
+  result = AudioComponentInstanceNew(found_vpio_unit_ref, &vpio_unit_);
+  if (result != noErr) {
+    vpio_unit_ = nullptr;
+    LOG(LS_ERROR) << "AudioComponentInstanceNew failed: " << result;
+    return false;
+  }
 
   // A VP I/O unit's bus 1 connects to input hardware (microphone). Enable
   // input on the input scope of the input element.
   AudioUnitElement input_bus = 1;
   UInt32 enable_input = 1;
-  LOG_AND_RETURN_IF_ERROR(
-      AudioUnitSetProperty(vpio_unit_, kAudioOutputUnitProperty_EnableIO,
-                           kAudioUnitScope_Input, input_bus, &enable_input,
-                           sizeof(enable_input)),
-      "Failed to enable input on input scope of input element");
+  result = AudioUnitSetProperty(vpio_unit_, kAudioOutputUnitProperty_EnableIO,
+                                kAudioUnitScope_Input, input_bus, &enable_input,
+                                sizeof(enable_input));
+  if (result != noErr) {
+    DisposeAudioUnit();
+    LOG(LS_ERROR) << "Failed to enable input on input scope of input element: "
+                  << result;
+    return false;
+  }
 
   // A VP I/O unit's bus 0 connects to output hardware (speaker). Enable
   // output on the output scope of the output element.
   AudioUnitElement output_bus = 0;
   UInt32 enable_output = 1;
-  LOG_AND_RETURN_IF_ERROR(
-      AudioUnitSetProperty(vpio_unit_, kAudioOutputUnitProperty_EnableIO,
-                           kAudioUnitScope_Output, output_bus, &enable_output,
-                           sizeof(enable_output)),
-      "Failed to enable output on output scope of output element");
+  result = AudioUnitSetProperty(vpio_unit_, kAudioOutputUnitProperty_EnableIO,
+                                kAudioUnitScope_Output, output_bus,
+                                &enable_output, sizeof(enable_output));
+  if (result != noErr) {
+    DisposeAudioUnit();
+    LOG(LS_ERROR)
+        << "Failed to enable output on output scope of output element: "
+        << result;
+    return false;
+  }
 
   // Set the application formats for input and output:
   // - use same format in both directions
@@ -694,38 +819,55 @@ bool AudioDeviceIOS::SetupAndInitializeVoiceProcessingAudioUnit() {
 #endif
 
   // Set the application format on the output scope of the input element/bus.
-  LOG_AND_RETURN_IF_ERROR(
-      AudioUnitSetProperty(vpio_unit_, kAudioUnitProperty_StreamFormat,
-                           kAudioUnitScope_Output, input_bus,
-                           &application_format, size),
-      "Failed to set application format on output scope of input element");
+  result = AudioUnitSetProperty(vpio_unit_, kAudioUnitProperty_StreamFormat,
+                                kAudioUnitScope_Output, input_bus,
+                                &application_format, size);
+  if (result != noErr) {
+    DisposeAudioUnit();
+    LOG(LS_ERROR)
+        << "Failed to set application format on output scope of input bus: "
+        << result;
+    return false;
+  }
 
   // Set the application format on the input scope of the output element/bus.
-  LOG_AND_RETURN_IF_ERROR(
-      AudioUnitSetProperty(vpio_unit_, kAudioUnitProperty_StreamFormat,
-                           kAudioUnitScope_Input, output_bus,
-                           &application_format, size),
-      "Failed to set application format on input scope of output element");
+  result = AudioUnitSetProperty(vpio_unit_, kAudioUnitProperty_StreamFormat,
+                                kAudioUnitScope_Input, output_bus,
+                                &application_format, size);
+  if (result != noErr) {
+    DisposeAudioUnit();
+    LOG(LS_ERROR)
+        << "Failed to set application format on input scope of output bus: "
+        << result;
+    return false;
+  }
 
   // Specify the callback function that provides audio samples to the audio
   // unit.
   AURenderCallbackStruct render_callback;
   render_callback.inputProc = GetPlayoutData;
   render_callback.inputProcRefCon = this;
-  LOG_AND_RETURN_IF_ERROR(
-      AudioUnitSetProperty(vpio_unit_, kAudioUnitProperty_SetRenderCallback,
-                           kAudioUnitScope_Input, output_bus, &render_callback,
-                           sizeof(render_callback)),
-      "Failed to specify the render callback on the output element");
+  result = AudioUnitSetProperty(
+      vpio_unit_, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input,
+      output_bus, &render_callback, sizeof(render_callback));
+  if (result != noErr) {
+    DisposeAudioUnit();
+    LOG(LS_ERROR) << "Failed to specify the render callback on the output bus: "
+                  << result;
+    return false;
+  }
 
   // Disable AU buffer allocation for the recorder, we allocate our own.
   // TODO(henrika): not sure that it actually saves resource to make this call.
   UInt32 flag = 0;
-  LOG_AND_RETURN_IF_ERROR(
-      AudioUnitSetProperty(vpio_unit_, kAudioUnitProperty_ShouldAllocateBuffer,
-                           kAudioUnitScope_Output, input_bus, &flag,
-                           sizeof(flag)),
-      "Failed to disable buffer allocation on the input element");
+  result = AudioUnitSetProperty(
+      vpio_unit_, kAudioUnitProperty_ShouldAllocateBuffer,
+      kAudioUnitScope_Output, input_bus, &flag, sizeof(flag));
+  if (result != noErr) {
+    DisposeAudioUnit();
+    LOG(LS_ERROR) << "Failed to disable buffer allocation on the input bus: "
+                  << result;
+  }
 
   // Specify the callback to be called by the I/O thread to us when input audio
   // is available. The recorded samples can then be obtained by calling the
@@ -733,16 +875,39 @@ bool AudioDeviceIOS::SetupAndInitializeVoiceProcessingAudioUnit() {
   AURenderCallbackStruct input_callback;
   input_callback.inputProc = RecordedDataIsAvailable;
   input_callback.inputProcRefCon = this;
-  LOG_AND_RETURN_IF_ERROR(
-      AudioUnitSetProperty(vpio_unit_,
-                           kAudioOutputUnitProperty_SetInputCallback,
-                           kAudioUnitScope_Global, input_bus, &input_callback,
-                           sizeof(input_callback)),
-      "Failed to specify the input callback on the input element");
+  result = AudioUnitSetProperty(vpio_unit_,
+                                kAudioOutputUnitProperty_SetInputCallback,
+                                kAudioUnitScope_Global, input_bus,
+                                &input_callback, sizeof(input_callback));
+  if (result != noErr) {
+    DisposeAudioUnit();
+    LOG(LS_ERROR) << "Failed to specify the input callback on the input bus: "
+                  << result;
+  }
 
   // Initialize the Voice-Processing I/O unit instance.
-  LOG_AND_RETURN_IF_ERROR(AudioUnitInitialize(vpio_unit_),
-                          "Failed to initialize the Voice-Processing I/O unit");
+  // Calls to AudioUnitInitialize() can fail if called back-to-back on
+  // different ADM instances. The error message in this case is -66635 which is
+  // undocumented. Tests have shown that calling AudioUnitInitialize a second
+  // time, after a short sleep, avoids this issue.
+  // See webrtc:5166 for details.
+  int failed_initalize_attempts = 0;
+  result = AudioUnitInitialize(vpio_unit_);
+  while (result != noErr) {
+    LOG(LS_ERROR) << "Failed to initialize the Voice-Processing I/O unit: "
+                  << result;
+    ++failed_initalize_attempts;
+    if (failed_initalize_attempts == kMaxNumberOfAudioUnitInitializeAttempts) {
+      // Max number of initialization attempts exceeded, hence abort.
+      LOG(LS_WARNING) << "Too many initialization attempts";
+      DisposeAudioUnit();
+      return false;
+    }
+    LOG(LS_INFO) << "pause 100ms and try audio unit initialization again...";
+    [NSThread sleepForTimeInterval:0.1f];
+    result = AudioUnitInitialize(vpio_unit_);
+  }
+  LOG(LS_INFO) << "Voice-Processing I/O unit is now initialized";
   return true;
 }
 
@@ -772,18 +937,29 @@ bool AudioDeviceIOS::RestartAudioUnitWithNewFormat(float sample_rate) {
   // Prepare the audio unit to render audio again.
   LOG_AND_RETURN_IF_ERROR(AudioUnitInitialize(vpio_unit_),
                           "Failed to initialize the Voice-Processing I/O unit");
+  LOG(LS_INFO) << "Voice-Processing I/O unit is now reinitialized";
 
   // Start rendering audio using the new format.
   LOG_AND_RETURN_IF_ERROR(AudioOutputUnitStart(vpio_unit_),
                           "Failed to start the Voice-Processing I/O unit");
+  LOG(LS_INFO) << "Voice-Processing I/O unit is now restarted";
   return true;
 }
 
 bool AudioDeviceIOS::InitPlayOrRecord() {
   LOGI() << "InitPlayOrRecord";
+  // Activate the audio session if not already activated.
+  if (!ActivateAudioSession()) {
+    return false;
+  }
+
+  // Ensure that the active audio session has the correct category and mode.
   AVAudioSession* session = [AVAudioSession sharedInstance];
-  // Activate the audio session and ask for a set of preferred audio parameters.
-  ActivateAudioSession(session, true);
+  if (!VerifyAudioSession(session)) {
+    DeactivateAudioSession();
+    LOG(LS_ERROR) << "Failed to verify audio session category and mode";
+    return false;
+  }
 
   // Start observing audio session interruptions and route changes.
   RegisterNotificationObservers();
@@ -793,16 +969,16 @@ bool AudioDeviceIOS::InitPlayOrRecord() {
 
   // Create, setup and initialize a new Voice-Processing I/O unit.
   if (!SetupAndInitializeVoiceProcessingAudioUnit()) {
+    // Reduce usage count for the audio session and possibly deactivate it if
+    // this object is the only user.
+    DeactivateAudioSession();
     return false;
   }
   return true;
 }
 
-bool AudioDeviceIOS::ShutdownPlayOrRecord() {
+void AudioDeviceIOS::ShutdownPlayOrRecord() {
   LOGI() << "ShutdownPlayOrRecord";
-  // Remove audio session notification observers.
-  UnregisterNotificationObservers();
-
   // Close and delete the voice-processing I/O unit.
   OSStatus result = -1;
   if (nullptr != vpio_unit_) {
@@ -814,18 +990,25 @@ bool AudioDeviceIOS::ShutdownPlayOrRecord() {
     if (result != noErr) {
       LOG_F(LS_ERROR) << "AudioUnitUninitialize failed: " << result;
     }
-    result = AudioComponentInstanceDispose(vpio_unit_);
-    if (result != noErr) {
-      LOG_F(LS_ERROR) << "AudioComponentInstanceDispose failed: " << result;
-    }
-    vpio_unit_ = nullptr;
+    DisposeAudioUnit();
   }
+
+  // Remove audio session notification observers.
+  UnregisterNotificationObservers();
 
   // All I/O should be stopped or paused prior to deactivating the audio
   // session, hence we deactivate as last action.
-  AVAudioSession* session = [AVAudioSession sharedInstance];
-  ActivateAudioSession(session, false);
-  return true;
+  DeactivateAudioSession();
+}
+
+void AudioDeviceIOS::DisposeAudioUnit() {
+  if (nullptr == vpio_unit_)
+    return;
+  OSStatus result = AudioComponentInstanceDispose(vpio_unit_);
+  if (result != noErr) {
+    LOG(LS_ERROR) << "AudioComponentInstanceDispose failed:" << result;
+  }
+  vpio_unit_ = nullptr;
 }
 
 OSStatus AudioDeviceIOS::RecordedDataIsAvailable(
@@ -855,8 +1038,11 @@ OSStatus AudioDeviceIOS::OnRecordedDataIsAvailable(
   if (in_number_frames != record_parameters_.frames_per_buffer()) {
     // We have seen short bursts (1-2 frames) where |in_number_frames| changes.
     // Add a log to keep track of longer sequences if that should ever happen.
+    // Also return since calling AudioUnitRender in this state will only result
+    // in kAudio_ParamError (-50) anyhow.
     LOG(LS_WARNING) << "in_number_frames (" << in_number_frames
                     << ") != " << record_parameters_.frames_per_buffer();
+    return noErr;
   }
   // Obtain the recorded audio samples by initiating a rendering cycle.
   // Since it happens on the input bus, the |io_data| parameter is a reference
@@ -866,7 +1052,7 @@ OSStatus AudioDeviceIOS::OnRecordedDataIsAvailable(
   result = AudioUnitRender(vpio_unit_, io_action_flags, in_time_stamp,
                            in_bus_number, in_number_frames, io_data);
   if (result != noErr) {
-    LOG_F(LS_ERROR) << "AudioOutputUnitStart failed: " << result;
+    LOG_F(LS_ERROR) << "AudioUnitRender failed: " << result;
     return result;
   }
   // Get a pointer to the recorded audio and send it to the WebRTC ADB.

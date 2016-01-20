@@ -11,6 +11,8 @@
 #ifndef WEBRTC_MODULES_AUDIO_CODING_NETEQ_NETEQ_IMPL_H_
 #define WEBRTC_MODULES_AUDIO_CODING_NETEQ_NETEQ_IMPL_H_
 
+#include <string>
+
 #include "webrtc/base/constructormagic.h"
 #include "webrtc/base/scoped_ptr.h"
 #include "webrtc/base/thread_annotations.h"
@@ -79,8 +81,7 @@ class NetEqImpl : public webrtc::NetEq {
   // the same tick rate as the RTP timestamp of the current payload.
   // Returns 0 on success, -1 on failure.
   int InsertPacket(const WebRtcRTPHeader& rtp_header,
-                   const uint8_t* payload,
-                   size_t length_bytes,
+                   rtc::ArrayView<const uint8_t> payload,
                    uint32_t receive_timestamp) override;
 
   // Inserts a sync-packet into packet queue. Sync-packets are decoded to
@@ -106,20 +107,16 @@ class NetEqImpl : public webrtc::NetEq {
   int GetAudio(size_t max_length,
                int16_t* output_audio,
                size_t* samples_per_channel,
-               int* num_channels,
+               size_t* num_channels,
                NetEqOutputType* type) override;
 
-  // Associates |rtp_payload_type| with |codec| and stores the information in
-  // the codec database. Returns kOK on success, kFail on failure.
   int RegisterPayloadType(NetEqDecoder codec,
+                          const std::string& codec_name,
                           uint8_t rtp_payload_type) override;
 
-  // Provides an externally created decoder object |decoder| to insert in the
-  // decoder database. The decoder implements a decoder of type |codec| and
-  // associates it with |rtp_payload_type|. The decoder will produce samples
-  // at the rate |sample_rate_hz|. Returns kOK on success, kFail on failure.
   int RegisterExternalDecoder(AudioDecoder* decoder,
                               NetEqDecoder codec,
+                              const std::string& codec_name,
                               uint8_t rtp_payload_type,
                               int sample_rate_hz) override;
 
@@ -169,6 +166,8 @@ class NetEqImpl : public webrtc::NetEq {
 
   bool GetPlayoutTimestamp(uint32_t* timestamp) override;
 
+  int last_output_sample_rate_hz() const override;
+
   int SetTargetNumberOfChannels() override;
 
   int SetTargetSampleRate() override;
@@ -207,8 +206,7 @@ class NetEqImpl : public webrtc::NetEq {
   // above. Returns 0 on success, otherwise an error code.
   // TODO(hlundin): Merge this with InsertPacket above?
   int InsertPacketInternal(const WebRtcRTPHeader& rtp_header,
-                           const uint8_t* payload,
-                           size_t length_bytes,
+                           rtc::ArrayView<const uint8_t> payload,
                            uint32_t receive_timestamp,
                            bool is_sync_packet)
       EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
@@ -222,7 +220,8 @@ class NetEqImpl : public webrtc::NetEq {
   int GetAudioInternal(size_t max_length,
                        int16_t* output,
                        size_t* samples_per_channel,
-                       int* num_channels) EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
+                       size_t* num_channels)
+      EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
 
   // Provides a decision to the GetAudioInternal method. The decision what to
   // do is written to |operation|. Packets to decode are written to
@@ -377,6 +376,7 @@ class NetEqImpl : public webrtc::NetEq {
   StatisticsCalculator stats_ GUARDED_BY(crit_sect_);
   int fs_hz_ GUARDED_BY(crit_sect_);
   int fs_mult_ GUARDED_BY(crit_sect_);
+  int last_output_sample_rate_hz_ GUARDED_BY(crit_sect_);
   size_t output_size_samples_ GUARDED_BY(crit_sect_);
   size_t decoder_frame_length_ GUARDED_BY(crit_sect_);
   Modes last_mode_ GUARDED_BY(crit_sect_);

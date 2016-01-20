@@ -10,6 +10,8 @@
 
 #include "webrtc/modules/audio_device/android/audio_record_jni.h"
 
+#include <utility>
+
 #include <android/log.h>
 
 #include "webrtc/base/arraysize.h"
@@ -28,23 +30,20 @@ namespace webrtc {
 
 // AudioRecordJni::JavaAudioRecord implementation.
 AudioRecordJni::JavaAudioRecord::JavaAudioRecord(
-    NativeRegistration* native_reg, rtc::scoped_ptr<GlobalRef> audio_record)
-    : audio_record_(audio_record.Pass()),
+    NativeRegistration* native_reg,
+    rtc::scoped_ptr<GlobalRef> audio_record)
+    : audio_record_(std::move(audio_record)),
       init_recording_(native_reg->GetMethodId("initRecording", "(II)I")),
       start_recording_(native_reg->GetMethodId("startRecording", "()Z")),
       stop_recording_(native_reg->GetMethodId("stopRecording", "()Z")),
-      enable_built_in_aec_(native_reg->GetMethodId(
-          "enableBuiltInAEC", "(Z)Z")),
-      enable_built_in_agc_(native_reg->GetMethodId(
-          "enableBuiltInAGC", "(Z)Z")),
-      enable_built_in_ns_(native_reg->GetMethodId(
-          "enableBuiltInNS", "(Z)Z")) {
-}
+      enable_built_in_aec_(native_reg->GetMethodId("enableBuiltInAEC", "(Z)Z")),
+      enable_built_in_agc_(native_reg->GetMethodId("enableBuiltInAGC", "(Z)Z")),
+      enable_built_in_ns_(native_reg->GetMethodId("enableBuiltInNS", "(Z)Z")) {}
 
 AudioRecordJni::JavaAudioRecord::~JavaAudioRecord() {}
 
 int AudioRecordJni::JavaAudioRecord::InitRecording(
-    int sample_rate, int channels) {
+    int sample_rate, size_t channels) {
   return audio_record_->CallIntMethod(init_recording_,
                                       static_cast<jint>(sample_rate),
                                       static_cast<jint>(channels));
@@ -186,8 +185,8 @@ void AudioRecordJni::AttachAudioBuffer(AudioDeviceBuffer* audioBuffer) {
   const int sample_rate_hz = audio_parameters_.sample_rate();
   ALOGD("SetRecordingSampleRate(%d)", sample_rate_hz);
   audio_device_buffer_->SetRecordingSampleRate(sample_rate_hz);
-  const int channels = audio_parameters_.channels();
-  ALOGD("SetRecordingChannels(%d)", channels);
+  const size_t channels = audio_parameters_.channels();
+  ALOGD("SetRecordingChannels(%" PRIuS ")", channels);
   audio_device_buffer_->SetRecordingChannels(channels);
   total_delay_in_milliseconds_ =
       audio_manager_->GetDelayEstimateInMilliseconds();

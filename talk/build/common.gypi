@@ -41,7 +41,6 @@
     ],
     # Disable these to not build components which can be externally provided.
     'build_expat%': 1,
-    'build_icu%': 1,
     'build_json%': 1,
     'build_libsrtp%': 1,
     'build_libyuv%': 1,
@@ -61,17 +60,9 @@
       '../../webrtc',
     ],
     'defines': [
-      'EXPAT_RELATIVE_PATH',
-      'FEATURE_ENABLE_VOICEMAIL',
-      'GTEST_RELATIVE_PATH',
-      'JSONCPP_RELATIVE_PATH',
-      'LOGGING=1',
       'SRTP_RELATIVE_PATH',
 
       # Feature selection
-      'FEATURE_ENABLE_SSL',
-      'FEATURE_ENABLE_VOICEMAIL',
-      'FEATURE_ENABLE_PSTN',
       'HAVE_SCTP',
       'HAVE_SRTP',
       'HAVE_WEBRTC_VIDEO',
@@ -80,7 +71,6 @@
     'conditions': [
       ['OS=="linux"', {
         'defines': [
-          'LINUX',
           'WEBRTC_LINUX',
         ],
         # Remove Chromium's disabling of the -Wformat warning.
@@ -112,7 +102,6 @@
       }],
       ['OS=="mac"', {
         'defines': [
-          'OSX',
           'WEBRTC_MAC',
         ],
       }],
@@ -129,7 +118,6 @@
       }],
       ['OS=="ios"', {
         'defines': [
-          'IOS',
           'WEBRTC_MAC',
           'WEBRTC_IOS',
         ],

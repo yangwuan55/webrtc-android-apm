@@ -86,7 +86,6 @@
             'test/metrics.gyp:*',
             'test/test.gyp:*',
             'test/webrtc_test_common.gyp:*',
-            'video_engine/video_engine_core_unittests.gyp:*',
             'webrtc_tests',
           ],
         }],
@@ -98,6 +97,7 @@
       'sources': [
         'audio_receive_stream.h',
         'audio_send_stream.h',
+        'audio_state.h',
         'call.h',
         'config.h',
         'frame_callback.h',

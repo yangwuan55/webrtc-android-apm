@@ -12,7 +12,7 @@
 
 #include "testing/gtest/include/gtest/gtest.h"
 
-#include "webrtc/modules/video_coding/codecs/interface/video_codec_interface.h"
+#include "webrtc/modules/video_coding/include/video_codec_interface.h"
 #include "webrtc/system_wrappers/include/sleep.h"
 
 namespace webrtc {
@@ -56,6 +56,11 @@ int32_t FakeEncoder::Encode(const VideoFrame& input_image,
     // For all frames but the first we can estimate the display time by looking
     // at the display time of the previous frame.
     time_since_last_encode_ms = time_now_ms - last_encode_time_ms_;
+  }
+  if (time_since_last_encode_ms > 3 * 1000 / config_.maxFramerate) {
+    // Rudimentary check to make sure we don't widely overshoot bitrate target
+    // when resuming encoding after a suspension.
+    time_since_last_encode_ms = 3 * 1000 / config_.maxFramerate;
   }
 
   size_t bits_available =
@@ -125,6 +130,11 @@ int32_t FakeEncoder::SetChannelParameters(uint32_t packet_loss, int64_t rtt) {
 int32_t FakeEncoder::SetRates(uint32_t new_target_bitrate, uint32_t framerate) {
   target_bitrate_kbps_ = new_target_bitrate;
   return 0;
+}
+
+const char* FakeEncoder::kImplementationName = "fake_encoder";
+const char* FakeEncoder::ImplementationName() const {
+  return kImplementationName;
 }
 
 FakeH264Encoder::FakeH264Encoder(Clock* clock)

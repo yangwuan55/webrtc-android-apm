@@ -34,6 +34,7 @@
 
 #include <map>
 
+#include "webrtc/base/arraysize.h"
 #include "webrtc/base/fileutils.h"
 #include "webrtc/base/httpcommon.h"
 #include "webrtc/base/httpcommon-inl.h"
@@ -222,7 +223,7 @@ bool ProxyItemMatch(const Url<char>& url, char * item, size_t len) {
     uint32_t mask = (m == 0) ? 0 : (~0UL) << (32 - m);
     SocketAddress addr(url.host(), 0);
     // TODO: Support IPv6 proxyitems. This code block is IPv4 only anyway.
-    return !addr.IsUnresolved() &&
+    return !addr.IsUnresolvedIP() &&
         ((addr.ipaddr().v4AddressAsHostOrderInteger() & mask) == (ip & mask));
   }
 
@@ -398,7 +399,7 @@ bool GetFirefoxProfilePath(Pathname* path) {
   }
   char buffer[NAME_MAX + 1];
   if (0 != FSRefMakePath(&fr, reinterpret_cast<uint8_t*>(buffer),
-                         ARRAY_SIZE(buffer))) {
+                         arraysize(buffer))) {
     LOG(LS_ERROR) << "FSRefMakePath failed";
     return false;
   }

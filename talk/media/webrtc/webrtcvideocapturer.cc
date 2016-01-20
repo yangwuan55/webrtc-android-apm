@@ -34,6 +34,7 @@
 #ifdef HAVE_WEBRTC_VIDEO
 #include "talk/media/webrtc/webrtcvideoframe.h"
 #include "talk/media/webrtc/webrtcvideoframefactory.h"
+#include "webrtc/base/arraysize.h"
 #include "webrtc/base/bind.h"
 #include "webrtc/base/checks.h"
 #include "webrtc/base/criticalsection.h"
@@ -43,7 +44,7 @@
 #include "webrtc/base/timeutils.h"
 
 #include "webrtc/base/win32.h"  // Need this to #include the impl files.
-#include "webrtc/modules/video_capture/include/video_capture_factory.h"
+#include "webrtc/modules/video_capture/video_capture_factory.h"
 #include "webrtc/system_wrappers/include/field_trial.h"
 
 namespace cricket {
@@ -83,7 +84,7 @@ class WebRtcVcmFactory : public WebRtcVcmFactoryInterface {
 static bool CapabilityToFormat(const webrtc::VideoCaptureCapability& cap,
                                VideoFormat* format) {
   uint32_t fourcc = 0;
-  for (size_t i = 0; i < ARRAY_SIZE(kSupportedFourCCs); ++i) {
+  for (size_t i = 0; i < arraysize(kSupportedFourCCs); ++i) {
     if (kSupportedFourCCs[i].webrtc_type == cap.rawType) {
       fourcc = kSupportedFourCCs[i].fourcc;
       break;
@@ -103,7 +104,7 @@ static bool CapabilityToFormat(const webrtc::VideoCaptureCapability& cap,
 static bool FormatToCapability(const VideoFormat& format,
                                webrtc::VideoCaptureCapability* cap) {
   webrtc::RawVideoType webrtc_type = webrtc::kVideoUnknown;
-  for (size_t i = 0; i < ARRAY_SIZE(kSupportedFourCCs); ++i) {
+  for (size_t i = 0; i < arraysize(kSupportedFourCCs); ++i) {
     if (kSupportedFourCCs[i].fourcc == format.fourcc) {
       webrtc_type = kSupportedFourCCs[i].webrtc_type;
       break;
@@ -171,8 +172,8 @@ bool WebRtcVideoCapturer::Init(const Device& device) {
   bool found = false;
   for (int index = 0; index < num_cams; ++index) {
     char vcm_name[256];
-    if (info->GetDeviceName(index, vcm_name, ARRAY_SIZE(vcm_name),
-                            vcm_id, ARRAY_SIZE(vcm_id)) != -1) {
+    if (info->GetDeviceName(index, vcm_name, arraysize(vcm_name), vcm_id,
+                            arraysize(vcm_id)) != -1) {
       if (device.name == reinterpret_cast<char*>(vcm_name)) {
         found = true;
         break;
@@ -349,6 +350,7 @@ void WebRtcVideoCapturer::Stop() {
 
   SetCaptureFormat(NULL);
   start_thread_ = nullptr;
+  SetCaptureState(CS_STOPPED);
 }
 
 bool WebRtcVideoCapturer::IsRunning() {
@@ -361,7 +363,7 @@ bool WebRtcVideoCapturer::GetPreferredFourccs(std::vector<uint32_t>* fourccs) {
   }
 
   fourccs->clear();
-  for (size_t i = 0; i < ARRAY_SIZE(kSupportedFourCCs); ++i) {
+  for (size_t i = 0; i < arraysize(kSupportedFourCCs); ++i) {
     fourccs->push_back(kSupportedFourCCs[i].fourcc);
   }
   return true;

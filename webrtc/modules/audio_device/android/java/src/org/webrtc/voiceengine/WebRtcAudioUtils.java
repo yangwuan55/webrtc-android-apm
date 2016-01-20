@@ -144,6 +144,11 @@ public final class WebRtcAudioUtils {
     return Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1;
   }
 
+  public static boolean runningOnJellyBeanMR2OrHigher() {
+    // July 24, 2013: Android 4.3. API Level 18.
+    return Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2;
+  }
+
   public static boolean runningOnLollipopOrHigher() {
     // API Level 21.
     return Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP;
@@ -193,37 +198,5 @@ public final class WebRtcAudioUtils {
         permission,
         Process.myPid(),
         Process.myUid()) == PackageManager.PERMISSION_GRANTED;
-  }
-
-  // Convert the provided audio |mode| into most suitable audio output stream
-  // type. The stream type is used for creating audio streams and for volume
-  // changes. It is essential that the mode and type are in-line to ensure
-  // correct behavior. If for example a STREAM_MUSIC type of stream is created
-  // in a MODE_IN_COMMUNICATION mode, audio will be played out and the volume
-  // icon will look OK but the actual volume will not be changed when the user
-  // changes the volume slider.
-  // TODO(henrika): there is currently no mapping to STREAM_ALARM, STREAM_DTMF,
-  // or STREAM_NOTIFICATION types since I am unable to see a reason for using
-  // them. There are only four different modes.
-  public static int getOutputStreamTypeFromAudioMode(int mode) {
-    Logging.d(TAG, "getOutputStreamTypeFromAudioMode(mode=" + mode + ")");
-    switch (mode) {
-      case AudioManager.MODE_NORMAL:
-        // The audio stream for music playback.
-        Logging.d(TAG, "AudioManager.STREAM_MUSIC");
-        return AudioManager.STREAM_MUSIC;
-      case AudioManager.MODE_RINGTONE:
-        // Audio stream for the phone ring.
-        Logging.d(TAG, "AudioManager.STREAM_RING");
-        return AudioManager.STREAM_RING;
-      case AudioManager.MODE_IN_CALL:
-      case AudioManager.MODE_IN_COMMUNICATION:
-        // Audio stream for phone calls.
-        Logging.d(TAG, "AudioManager.STREAM_VOICE_CALL");
-        return AudioManager.STREAM_VOICE_CALL;
-      default:
-        Logging.d(TAG, "AudioManager.USE_DEFAULT_STREAM_TYPE");
-        return AudioManager.USE_DEFAULT_STREAM_TYPE;
     }
-  }
 }

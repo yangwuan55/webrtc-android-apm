@@ -11,15 +11,17 @@
 #include "webrtc/modules/rtp_rtcp/source/rtp_sender.h"
 
 #include <stdlib.h>  // srand
+#include <algorithm>
 #include <utility>
 
 #include "webrtc/base/checks.h"
 #include "webrtc/base/logging.h"
 #include "webrtc/base/trace_event.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_cvo.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_cvo.h"
 #include "webrtc/modules/rtp_rtcp/source/byte_io.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_sender_audio.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_sender_video.h"
+#include "webrtc/modules/rtp_rtcp/source/time_util.h"
 #include "webrtc/system_wrappers/include/critical_section_wrapper.h"
 #include "webrtc/system_wrappers/include/tick_util.h"
 
@@ -33,6 +35,7 @@ static const uint32_t kAbsSendTimeFraction = 18;
 namespace {
 
 const size_t kRtpHeaderLength = 12;
+const uint16_t kMaxInitRtpSeqNumber = 32767;  // 2^15 -1.
 
 const char* FrameTypeToString(FrameType frame_type) {
   switch (frame_type) {
@@ -125,6 +128,7 @@ RTPSender::RTPSender(
       // TickTime.
       clock_delta_ms_(clock_->TimeInMilliseconds() -
                       TickTime::MillisecondTimestamp()),
+      random_(clock_->TimeInMicroseconds()),
       bitrates_(new BitrateAggregator(bitrate_callback)),
       total_bitrate_sent_(clock, bitrates_->total_bitrate_observer()),
       audio_configured_(audio),
@@ -182,8 +186,8 @@ RTPSender::RTPSender(
   ssrc_rtx_ = ssrc_db_.CreateSSRC();  // Can't be 0.
   bitrates_->set_ssrc(ssrc_);
   // Random start, 16 bits. Can't be 0.
-  sequence_number_rtx_ = static_cast<uint16_t>(rand() + 1) & 0x7FFF;
-  sequence_number_ = static_cast<uint16_t>(rand() + 1) & 0x7FFF;
+  sequence_number_rtx_ = random_.Rand(1, kMaxInitRtpSeqNumber);
+  sequence_number_ = random_.Rand(1, kMaxInitRtpSeqNumber);
 }
 
 RTPSender::~RTPSender() {
@@ -292,7 +296,7 @@ int32_t RTPSender::RegisterPayload(
     const char payload_name[RTP_PAYLOAD_NAME_SIZE],
     int8_t payload_number,
     uint32_t frequency,
-    uint8_t channels,
+    size_t channels,
     uint32_t rate) {
   assert(payload_name);
   CriticalSectionScoped cs(send_critsect_.get());
@@ -323,11 +327,11 @@ int32_t RTPSender::RegisterPayload(
     return -1;
   }
   int32_t ret_val = 0;
-  RtpUtility::Payload* payload = NULL;
+  RtpUtility::Payload* payload = nullptr;
   if (audio_configured_) {
     // TODO(mflodman): Change to CreateAudioPayload and make static.
     ret_val = audio_->RegisterAudioPayload(payload_name, payload_number,
-                                           frequency, channels, rate, payload);
+                                           frequency, channels, rate, &payload);
   } else {
     payload = video_->CreateVideoPayload(payload_name, payload_number, rate);
   }
@@ -452,7 +456,7 @@ int32_t RTPSender::CheckPayloadType(int8_t payload_type,
   }
   if (audio_configured_) {
     int8_t red_pl_type = -1;
-    if (audio_->RED(red_pl_type) == 0) {
+    if (audio_->RED(&red_pl_type) == 0) {
       // We have configured RED.
       if (red_pl_type == payload_type) {
         // And it's a match...
@@ -469,7 +473,8 @@ int32_t RTPSender::CheckPayloadType(int8_t payload_type,
   std::map<int8_t, RtpUtility::Payload*>::iterator it =
       payload_type_map_.find(payload_type);
   if (it == payload_type_map_.end()) {
-    LOG(LS_WARNING) << "Payload type " << payload_type << " not registered.";
+    LOG(LS_WARNING) << "Payload type " << static_cast<int>(payload_type)
+                    << " not registered.";
     return -1;
   }
   SetSendPayloadType(payload_type);
@@ -512,7 +517,8 @@ int32_t RTPSender::SendOutgoingData(FrameType frame_type,
   }
   RtpVideoCodecTypes video_type = kRtpVideoGeneric;
   if (CheckPayloadType(payload_type, &video_type) != 0) {
-    LOG(LS_ERROR) << "Don't send data with unknown payload type.";
+    LOG(LS_ERROR) << "Don't send data with unknown payload type: "
+                  << static_cast<int>(payload_type) << ".";
     return -1;
   }
 
@@ -573,7 +579,7 @@ size_t RTPSender::TrySendRedundantPayloads(size_t bytes_to_send) {
       break;
     RtpUtility::RtpHeaderParser rtp_parser(buffer, length);
     RTPHeader rtp_header;
-    rtp_parser.Parse(rtp_header);
+    rtp_parser.Parse(&rtp_header);
     bytes_left -= static_cast<int>(length - rtp_header.headerLength);
   }
   return bytes_to_send - bytes_left;
@@ -583,8 +589,7 @@ void RTPSender::BuildPaddingPacket(uint8_t* packet,
                                    size_t header_length,
                                    size_t padding_length) {
   packet[0] |= 0x20;  // Set padding bit.
-  int32_t *data =
-      reinterpret_cast<int32_t *>(&(packet[header_length]));
+  int32_t* data = reinterpret_cast<int32_t*>(&(packet[header_length]));
 
   // Fill data buffer with random data.
   for (size_t j = 0; j < (padding_length >> 2); ++j) {
@@ -665,7 +670,7 @@ size_t RTPSender::SendPadData(size_t bytes,
 
     RtpUtility::RtpHeaderParser rtp_parser(padding_packet, length);
     RTPHeader rtp_header;
-    rtp_parser.Parse(rtp_header);
+    rtp_parser.Parse(&rtp_header);
 
     if (capture_time_ms > 0) {
       UpdateTransmissionTimeOffset(
@@ -717,7 +722,7 @@ int32_t RTPSender::ReSendPacket(uint16_t packet_id, int64_t min_resend_time) {
   if (paced_sender_) {
     RtpUtility::RtpHeaderParser rtp_parser(data_buffer, length);
     RTPHeader header;
-    if (!rtp_parser.Parse(header)) {
+    if (!rtp_parser.Parse(&header)) {
       assert(false);
       return -1;
     }
@@ -725,7 +730,7 @@ int32_t RTPSender::ReSendPacket(uint16_t packet_id, int64_t min_resend_time) {
     // TickTime.
     int64_t corrected_capture_tims_ms = capture_time_ms + clock_delta_ms_;
     paced_sender_->InsertPacket(
-        RtpPacketSender::kHighPriority, header.ssrc, header.sequenceNumber,
+        RtpPacketSender::kNormalPriority, header.ssrc, header.sequenceNumber,
         corrected_capture_tims_ms, length - header.headerLength, true);
 
     return length;
@@ -903,11 +908,11 @@ bool RTPSender::PrepareAndSendPacket(uint8_t* buffer,
                                      int64_t capture_time_ms,
                                      bool send_over_rtx,
                                      bool is_retransmit) {
-  uint8_t *buffer_to_send_ptr = buffer;
+  uint8_t* buffer_to_send_ptr = buffer;
 
   RtpUtility::RtpHeaderParser rtp_parser(buffer, length);
   RTPHeader rtp_header;
-  rtp_parser.Parse(rtp_header);
+  rtp_parser.Parse(&rtp_header);
   if (!is_retransmit && rtp_header.markerBit) {
     TRACE_EVENT_ASYNC_END0(TRACE_DISABLED_BY_DEFAULT("webrtc_rtp"), "PacedSend",
                            capture_time_ms);
@@ -996,14 +1001,14 @@ bool RTPSender::IsFecPacket(const uint8_t* buffer,
   bool fec_enabled;
   uint8_t pt_red;
   uint8_t pt_fec;
-  video_->GenericFECStatus(fec_enabled, pt_red, pt_fec);
+  video_->GenericFECStatus(&fec_enabled, &pt_red, &pt_fec);
   return fec_enabled &&
       header.payloadType == pt_red &&
       buffer[header.headerLength] == pt_fec;
 }
 
 size_t RTPSender::TimeToSendPadding(size_t bytes) {
-  if (bytes == 0)
+  if (audio_configured_ || bytes == 0)
     return 0;
   {
     CriticalSectionScoped cs(send_critsect_.get());
@@ -1026,7 +1031,7 @@ int32_t RTPSender::SendToNetwork(uint8_t* buffer,
   RtpUtility::RtpHeaderParser rtp_parser(buffer,
                                          payload_length + rtp_header_length);
   RTPHeader rtp_header;
-  rtp_parser.Parse(rtp_header);
+  rtp_parser.Parse(&rtp_header);
 
   int64_t now_ms = clock_->TimeInMilliseconds();
 
@@ -1169,7 +1174,7 @@ size_t RTPSender::CreateRtpHeader(uint8_t* header,
   int32_t rtp_header_length = kRtpHeaderLength;
 
   if (csrcs.size() > 0) {
-    uint8_t *ptr = &header[rtp_header_length];
+    uint8_t* ptr = &header[rtp_header_length];
     for (size_t i = 0; i < csrcs.size(); ++i) {
       ByteWriter<uint32_t>::WriteBigEndian(ptr, csrcs[i]);
       ptr += 4;
@@ -1638,7 +1643,7 @@ uint16_t RTPSender::UpdateTransportSequenceNumber(
 void RTPSender::SetSendingStatus(bool enabled) {
   if (enabled) {
     uint32_t frequency_hz = SendPayloadFrequency();
-    uint32_t RTPtime = RtpUtility::GetCurrentRTP(clock_, frequency_hz);
+    uint32_t RTPtime = CurrentRtp(*clock_, frequency_hz);
 
     // Will be ignored if it's already configured via API.
     SetStartTimestamp(RTPtime, false);
@@ -1653,8 +1658,7 @@ void RTPSender::SetSendingStatus(bool enabled) {
     // Don't initialize seq number if SSRC passed externally.
     if (!sequence_number_forced_ && !ssrc_forced_) {
       // Generate a new sequence number.
-      sequence_number_ =
-          rand() / (RAND_MAX / MAX_INIT_RTP_SEQ_NUMBER);  // NOLINT
+      sequence_number_ = random_.Rand(1, kMaxInitRtpSeqNumber);
     }
   }
 }
@@ -1716,8 +1720,7 @@ void RTPSender::SetSSRC(uint32_t ssrc) {
   ssrc_ = ssrc;
   bitrates_->set_ssrc(ssrc_);
   if (!sequence_number_forced_) {
-    sequence_number_ =
-        rand() / (RAND_MAX / MAX_INIT_RTP_SEQ_NUMBER);  // NOLINT
+    sequence_number_ = random_.Rand(1, kMaxInitRtpSeqNumber);
   }
 }
 
@@ -1775,7 +1778,7 @@ int32_t RTPSender::RED(int8_t *payload_type) const {
   if (!audio_configured_) {
     return -1;
   }
-  return audio_->RED(*payload_type);
+  return audio_->RED(payload_type);
 }
 
 RtpVideoCodecTypes RTPSender::VideoCodecType() const {
@@ -1801,7 +1804,7 @@ void RTPSender::GenericFECStatus(bool* enable,
                                     uint8_t* payload_type_red,
                                     uint8_t* payload_type_fec) const {
   RTC_DCHECK(!audio_configured_);
-  video_->GenericFECStatus(*enable, *payload_type_red, *payload_type_fec);
+  video_->GenericFECStatus(enable, payload_type_red, payload_type_fec);
 }
 
 int32_t RTPSender::SetFecParameters(
@@ -1823,7 +1826,7 @@ void RTPSender::BuildRtxPacket(uint8_t* buffer, size_t* length,
       reinterpret_cast<const uint8_t*>(buffer), *length);
 
   RTPHeader rtp_header;
-  rtp_parser.Parse(rtp_header);
+  rtp_parser.Parse(&rtp_header);
 
   // Add original RTP header.
   memcpy(data_buffer_rtx, buffer, rtp_header.headerLength);
@@ -1836,7 +1839,7 @@ void RTPSender::BuildRtxPacket(uint8_t* buffer, size_t* length,
   }
 
   // Replace sequence number.
-  uint8_t *ptr = data_buffer_rtx + 2;
+  uint8_t* ptr = data_buffer_rtx + 2;
   ByteWriter<uint16_t>::WriteBigEndian(ptr, sequence_number_rtx_++);
 
   // Replace SSRC.

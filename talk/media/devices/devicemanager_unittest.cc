@@ -39,6 +39,7 @@
 #include "talk/media/base/videocapturerfactory.h"
 #include "talk/media/devices/filevideocapturer.h"
 #include "talk/media/devices/v4llookup.h"
+#include "webrtc/base/arraysize.h"
 #include "webrtc/base/fileutils.h"
 #include "webrtc/base/gunit.h"
 #include "webrtc/base/logging.h"
@@ -47,10 +48,10 @@
 #include "webrtc/base/stream.h"
 #include "webrtc/base/windowpickerfactory.h"
 
-#ifdef LINUX
+#ifdef WEBRTC_LINUX
 // TODO(juberti): Figure out why this doesn't compile on Windows.
 #include "webrtc/base/fileutils_mock.h"
-#endif  // LINUX
+#endif  // WEBRTC_LINUX
 
 using rtc::Pathname;
 using rtc::FileTimeType;
@@ -269,22 +270,22 @@ TEST(DeviceManagerTest, VerifyFilterDevices) {
       "device5",
   };
   std::vector<Device> devices;
-  for (int i = 0; i < ARRAY_SIZE(kTotalDevicesName); ++i) {
+  for (int i = 0; i < arraysize(kTotalDevicesName); ++i) {
     devices.push_back(Device(kTotalDevicesName[i], i));
   }
   EXPECT_TRUE(CompareDeviceList(devices, kTotalDevicesName,
-                                ARRAY_SIZE(kTotalDevicesName)));
+                                arraysize(kTotalDevicesName)));
   // Return false if given NULL as the exclusion list.
   EXPECT_TRUE(DeviceManager::FilterDevices(&devices, NULL));
   // The devices should not change.
   EXPECT_TRUE(CompareDeviceList(devices, kTotalDevicesName,
-                                ARRAY_SIZE(kTotalDevicesName)));
+                                arraysize(kTotalDevicesName)));
   EXPECT_TRUE(DeviceManager::FilterDevices(&devices, kFilteredDevicesName));
   EXPECT_TRUE(CompareDeviceList(devices, kDevicesName,
-                                ARRAY_SIZE(kDevicesName)));
+                                arraysize(kDevicesName)));
 }
 
-#ifdef LINUX
+#ifdef WEBRTC_LINUX
 class FakeV4LLookup : public cricket::V4LLookup {
  public:
   explicit FakeV4LLookup(std::vector<std::string> device_paths)
@@ -376,7 +377,7 @@ TEST(DeviceManagerTest, GetVideoCaptureDevices_KUnknown) {
   EXPECT_EQ("/dev/video0", video_ins.at(0).name);
   EXPECT_EQ("/dev/video5", video_ins.at(1).name);
 }
-#endif  // LINUX
+#endif  // WEBRTC_LINUX
 
 // TODO(noahric): These are flaky on windows on headless machines.
 #ifndef WIN32

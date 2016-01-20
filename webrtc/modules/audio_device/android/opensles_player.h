@@ -22,7 +22,7 @@
 #include "webrtc/modules/audio_device/android/opensles_common.h"
 #include "webrtc/modules/audio_device/include/audio_device_defines.h"
 #include "webrtc/modules/audio_device/audio_device_generic.h"
-#include "webrtc/modules/utility/interface/helpers_android.h"
+#include "webrtc/modules/utility/include/helpers_android.h"
 
 namespace webrtc {
 
@@ -52,7 +52,7 @@ class OpenSLESPlayer {
   // buffer count of 2 or more, and a buffer size and sample rate that are
   // compatible with the device's native output configuration provided via the
   // audio manager at construction.
-  static const int kNumOfOpenSLESBuffers = 2;
+  static const int kNumOfOpenSLESBuffers = 4;
 
   // There is no need for this class to use JNI.
   static int32_t SetAndroidAudioDeviceObjects(void* javaVM, void* context) {
@@ -94,7 +94,7 @@ class OpenSLESPlayer {
   void EnqueuePlayoutData();
 
   // Configures the SL_DATAFORMAT_PCM structure.
-  SLDataFormat_PCM CreatePCMConfiguration(int channels,
+  SLDataFormat_PCM CreatePCMConfiguration(size_t channels,
                                           int sample_rate,
                                           size_t bits_per_sample);
 
@@ -129,20 +129,6 @@ class OpenSLESPlayer {
   // Contains audio parameters provided to this class at construction by the
   // AudioManager.
   const AudioParameters audio_parameters_;
-
-  // Contains the stream type provided to this class at construction by the
-  // AudioManager. Possible input values are:
-  //  - AudioManager.STREAM_VOICE_CALL = 0
-  //  - AudioManager.STREAM_RING = 2
-  //  - AudioManager.STREAM_MUSIC = 3
-  // These value are mapped to the corresponding audio playback stream type
-  // values in the "OpenSL ES domain":
-  // - SL_ANDROID_STREAM_VOICE <=> STREAM_VOICE_CALL (0)
-  // - SL_ANDROID_STREAM_RING <=> STREAM_RING (2)
-  // - SL_ANDROID_STREAM_MEDIA <=> STREAM_MUSIC (3)
-  // when creating the audio player. See SLES/OpenSLES_AndroidConfiguration.h
-  // for details.
-  const int stream_type_;
 
   // Raw pointer handle provided to us in AttachAudioBuffer(). Owned by the
   // AudioDeviceModuleImpl class and called by AudioDeviceModuleImpl::Create().
@@ -209,6 +195,9 @@ class OpenSLESPlayer {
   // This interface exposes controls for manipulating the object’s audio volume
   // properties. This interface is supported on the Audio Player object.
   SLVolumeItf volume_;
+
+  // Last time the OpenSL ES layer asked for audio data to play out.
+  uint32_t last_play_time_;
 };
 
 }  // namespace webrtc
