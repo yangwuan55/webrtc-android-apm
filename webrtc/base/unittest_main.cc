@@ -78,12 +78,12 @@ int main(int argc, char** argv) {
     _CrtSetReportHook2(_CRT_RPTHOOK_INSTALL, TestCrtReportHandler);
   }
 
-#ifdef _DEBUG  // Turn on memory leak checking on Windows.
+#if !defined(NDEBUG)  // Turn on memory leak checking on Windows.
   _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF |_CRTDBG_LEAK_CHECK_DF);
   if (FLAG_crt_break_alloc >= 0) {
     _crtBreakAlloc = FLAG_crt_break_alloc;
   }
-#endif  // _DEBUG
+#endif
 #endif  // WEBRTC_WIN
 
   rtc::Filesystem::SetOrganizationName("google");
@@ -93,6 +93,10 @@ int main(int argc, char** argv) {
   rtc::LogMessage::LogTimestamps();
   if (*FLAG_log != '\0') {
     rtc::LogMessage::ConfigureLogging(FLAG_log);
+  } else if (rtc::LogMessage::GetLogToDebug() > rtc::LS_INFO) {
+    // Default to LS_INFO, even for release builds to provide better test
+    // logging.
+    rtc::LogMessage::LogToDebug(rtc::LS_INFO);
   }
 
   // Initialize SSL which are used by several tests.

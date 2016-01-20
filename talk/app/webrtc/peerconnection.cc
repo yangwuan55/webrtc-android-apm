@@ -27,8 +27,10 @@
 
 #include "talk/app/webrtc/peerconnection.h"
 
-#include <vector>
+#include <algorithm>
 #include <cctype>  // for isdigit
+#include <utility>
+#include <vector>
 
 #include "talk/app/webrtc/audiotrack.h"
 #include "talk/app/webrtc/dtmfsender.h"
@@ -36,6 +38,7 @@
 #include "talk/app/webrtc/jsepsessiondescription.h"
 #include "talk/app/webrtc/mediaconstraintsinterface.h"
 #include "talk/app/webrtc/mediastream.h"
+#include "talk/app/webrtc/mediastreamobserver.h"
 #include "talk/app/webrtc/mediastreamproxy.h"
 #include "talk/app/webrtc/mediastreamtrackproxy.h"
 #include "talk/app/webrtc/remoteaudiosource.h"
@@ -46,11 +49,13 @@
 #include "talk/app/webrtc/videosource.h"
 #include "talk/app/webrtc/videotrack.h"
 #include "talk/media/sctp/sctpdataengine.h"
-#include "webrtc/p2p/client/basicportallocator.h"
 #include "talk/session/media/channelmanager.h"
+#include "webrtc/base/arraysize.h"
 #include "webrtc/base/logging.h"
 #include "webrtc/base/stringencode.h"
 #include "webrtc/base/stringutils.h"
+#include "webrtc/base/trace_event.h"
+#include "webrtc/p2p/client/basicportallocator.h"
 #include "webrtc/system_wrappers/include/field_trial.h"
 
 namespace {
@@ -59,13 +64,8 @@ using webrtc::DataChannel;
 using webrtc::MediaConstraintsInterface;
 using webrtc::MediaStreamInterface;
 using webrtc::PeerConnectionInterface;
+using webrtc::RtpSenderInterface;
 using webrtc::StreamCollection;
-using webrtc::StunConfigurations;
-using webrtc::TurnConfigurations;
-typedef webrtc::PortAllocatorFactoryInterface::StunConfiguration
-    StunConfiguration;
-typedef webrtc::PortAllocatorFactoryInterface::TurnConfiguration
-    TurnConfiguration;
 
 static const char kDefaultStreamLabel[] = "default";
 static const char kDefaultAudioTrackLabel[] = "defaulta0";
@@ -80,8 +80,6 @@ static const size_t kTurnTransportTokensNum = 2;
 static const int kDefaultStunPort = 3478;
 static const int kDefaultStunTlsPort = 5349;
 static const char kTransport[] = "transport";
-static const char kUdpTransportType[] = "udp";
-static const char kTcpTransportType[] = "tcp";
 
 // NOTE: Must be in the same order as the ServiceType enum.
 static const char* kValidIceServiceTypes[] = {"stun", "stuns", "turn", "turns"};
@@ -95,7 +93,7 @@ enum ServiceType {
   TURNS,     // Indicates a TURN server used with a TLS session.
   INVALID,   // Unknown.
 };
-static_assert(INVALID == ARRAY_SIZE(kValidIceServiceTypes),
+static_assert(INVALID == arraysize(kValidIceServiceTypes),
               "kValidIceServiceTypes must have as many strings as ServiceType "
               "has values.");
 
@@ -104,6 +102,7 @@ enum {
   MSG_SET_SESSIONDESCRIPTION_FAILED,
   MSG_CREATE_SESSIONDESCRIPTION_FAILED,
   MSG_GETSTATS,
+  MSG_FREE_DATACHANNELS,
 };
 
 struct SetSessionDescriptionMsg : public rtc::MessageData {
@@ -156,7 +155,7 @@ bool GetServiceTypeAndHostnameFromUri(const std::string& in_str,
     return false;
   }
   *service_type = INVALID;
-  for (size_t i = 0; i < ARRAY_SIZE(kValidIceServiceTypes); ++i) {
+  for (size_t i = 0; i < arraysize(kValidIceServiceTypes); ++i) {
     if (in_str.compare(0, colonpos, kValidIceServiceTypes[i]) == 0) {
       *service_type = static_cast<ServiceType>(i);
       break;
@@ -216,12 +215,12 @@ bool ParseHostnameAndPortFromString(const std::string& in_str,
   return !host->empty();
 }
 
-// Adds a StunConfiguration or TurnConfiguration to the appropriate list,
+// Adds a STUN or TURN server to the appropriate list,
 // by parsing |url| and using the username/password in |server|.
 bool ParseIceServerUrl(const PeerConnectionInterface::IceServer& server,
                        const std::string& url,
-                       StunConfigurations* stun_config,
-                       TurnConfigurations* turn_config) {
+                       cricket::ServerAddresses* stun_servers,
+                       std::vector<cricket::RelayServerConfig>* turn_servers) {
   // draft-nandakumar-rtcweb-stun-uri-01
   // stunURI       = scheme ":" stun-host [ ":" stun-port ]
   // scheme        = "stun" / "stuns"
@@ -236,10 +235,10 @@ bool ParseIceServerUrl(const PeerConnectionInterface::IceServer& server,
   // transport-ext = 1*unreserved
   // turn-host     = IP-literal / IPv4address / reg-name
   // turn-port     = *DIGIT
-  RTC_DCHECK(stun_config != nullptr);
-  RTC_DCHECK(turn_config != nullptr);
+  RTC_DCHECK(stun_servers != nullptr);
+  RTC_DCHECK(turn_servers != nullptr);
   std::vector<std::string> tokens;
-  std::string turn_transport_type = kUdpTransportType;
+  cricket::ProtocolType turn_transport_type = cricket::PROTO_UDP;
   RTC_DCHECK(!url.empty());
   rtc::tokenize(url, '?', &tokens);
   std::string uri_without_transport = tokens[0];
@@ -250,11 +249,12 @@ bool ParseIceServerUrl(const PeerConnectionInterface::IceServer& server,
     if (tokens[0] == kTransport) {
       // As per above grammar transport param will be consist of lower case
       // letters.
-      if (tokens[1] != kUdpTransportType && tokens[1] != kTcpTransportType) {
+      if (!cricket::StringToProto(tokens[1].c_str(), &turn_transport_type) ||
+          (turn_transport_type != cricket::PROTO_UDP &&
+           turn_transport_type != cricket::PROTO_TCP)) {
         LOG(LS_WARNING) << "Transport param should always be udp or tcp.";
         return false;
       }
-      turn_transport_type = tokens[1];
     }
   }
 
@@ -293,7 +293,7 @@ bool ParseIceServerUrl(const PeerConnectionInterface::IceServer& server,
   int port = kDefaultStunPort;
   if (service_type == TURNS) {
     port = kDefaultStunTlsPort;
-    turn_transport_type = kTcpTransportType;
+    turn_transport_type = cricket::PROTO_TCP;
   }
 
   std::string address;
@@ -310,16 +310,14 @@ bool ParseIceServerUrl(const PeerConnectionInterface::IceServer& server,
   switch (service_type) {
     case STUN:
     case STUNS:
-      stun_config->push_back(StunConfiguration(address, port));
+      stun_servers->insert(rtc::SocketAddress(address, port));
       break;
     case TURN:
     case TURNS: {
       bool secure = (service_type == TURNS);
-      turn_config->push_back(TurnConfiguration(address, port,
-                                               username,
-                                               server.password,
-                                               turn_transport_type,
-                                               secure));
+      turn_servers->push_back(
+          cricket::RelayServerConfig(address, port, username, server.password,
+                                     turn_transport_type, secure));
       break;
     }
     case INVALID:
@@ -365,25 +363,15 @@ bool IsValidOfferToReceiveMedia(int value) {
 }
 
 // Add the stream and RTP data channel info to |session_options|.
-void SetStreams(cricket::MediaSessionOptions* session_options,
-                rtc::scoped_refptr<StreamCollection> streams,
-                const std::map<std::string, rtc::scoped_refptr<DataChannel>>&
-                    rtp_data_channels) {
+void AddSendStreams(
+    cricket::MediaSessionOptions* session_options,
+    const std::vector<rtc::scoped_refptr<RtpSenderInterface>>& senders,
+    const std::map<std::string, rtc::scoped_refptr<DataChannel>>&
+        rtp_data_channels) {
   session_options->streams.clear();
-  if (streams != nullptr) {
-    for (size_t i = 0; i < streams->count(); ++i) {
-      MediaStreamInterface* stream = streams->at(i);
-      // For each audio track in the stream, add it to the MediaSessionOptions.
-      for (const auto& track : stream->GetAudioTracks()) {
-        session_options->AddSendStream(cricket::MEDIA_TYPE_AUDIO, track->id(),
-                                       stream->label());
-      }
-      // For each video track in the stream, add it to the MediaSessionOptions.
-      for (const auto& track : stream->GetVideoTracks()) {
-        session_options->AddSendStream(cricket::MEDIA_TYPE_VIDEO, track->id(),
-                                       stream->label());
-      }
-    }
+  for (const auto& sender : senders) {
+    session_options->AddSendStream(sender->media_type(), sender->id(),
+                                   sender->stream_id());
   }
 
   // Check for data channels.
@@ -421,10 +409,12 @@ class RemoteMediaStreamFactory {
                                     MediaStream::Create(stream_label));
   }
 
-  AudioTrackInterface* AddAudioTrack(webrtc::MediaStreamInterface* stream,
+  AudioTrackInterface* AddAudioTrack(uint32_t ssrc,
+                                     AudioProviderInterface* provider,
+                                     webrtc::MediaStreamInterface* stream,
                                      const std::string& track_id) {
     return AddTrack<AudioTrackInterface, AudioTrack, AudioTrackProxy>(
-        stream, track_id, RemoteAudioSource::Create().get());
+        stream, track_id, RemoteAudioSource::Create(ssrc, provider));
   }
 
   VideoTrackInterface* AddVideoTrack(webrtc::MediaStreamInterface* stream,
@@ -432,7 +422,7 @@ class RemoteMediaStreamFactory {
     return AddTrack<VideoTrackInterface, VideoTrack, VideoTrackProxy>(
         stream, track_id,
         VideoSource::Create(channel_manager_, new RemoteVideoCapturer(),
-                            nullptr)
+                            nullptr, true)
             .get());
   }
 
@@ -440,7 +430,7 @@ class RemoteMediaStreamFactory {
   template <typename TI, typename T, typename TP, typename S>
   TI* AddTrack(MediaStreamInterface* stream,
                const std::string& track_id,
-               S* source) {
+               const S& source) {
     rtc::scoped_refptr<TI> track(
         TP::Create(signaling_thread_, T::Create(track_id, source)));
     track->set_state(webrtc::MediaStreamTrackInterface::kLive);
@@ -471,7 +461,11 @@ bool ConvertRtcOptionsForOffer(
   }
 
   session_options->vad_enabled = rtc_options.voice_activity_detection;
-  session_options->transport_options.ice_restart = rtc_options.ice_restart;
+  session_options->audio_transport_options.ice_restart =
+      rtc_options.ice_restart;
+  session_options->video_transport_options.ice_restart =
+      rtc_options.ice_restart;
+  session_options->data_transport_options.ice_restart = rtc_options.ice_restart;
   session_options->bundle_enabled = rtc_options.use_rtp_mux;
 
   return true;
@@ -517,10 +511,14 @@ bool ParseConstraintsForAnswer(const MediaConstraintsInterface* constraints,
 
   if (FindConstraint(constraints, MediaConstraintsInterface::kIceRestart,
                      &value, &mandatory_constraints_satisfied)) {
-    session_options->transport_options.ice_restart = value;
+    session_options->audio_transport_options.ice_restart = value;
+    session_options->video_transport_options.ice_restart = value;
+    session_options->data_transport_options.ice_restart = value;
   } else {
     // kIceRestart defaults to false according to spec.
-    session_options->transport_options.ice_restart = false;
+    session_options->audio_transport_options.ice_restart = false;
+    session_options->video_transport_options.ice_restart = false;
+    session_options->data_transport_options.ice_restart = false;
   }
 
   if (!constraints) {
@@ -530,8 +528,8 @@ bool ParseConstraintsForAnswer(const MediaConstraintsInterface* constraints,
 }
 
 bool ParseIceServers(const PeerConnectionInterface::IceServers& servers,
-                     StunConfigurations* stun_config,
-                     TurnConfigurations* turn_config) {
+                     cricket::ServerAddresses* stun_servers,
+                     std::vector<cricket::RelayServerConfig>* turn_servers) {
   for (const webrtc::PeerConnectionInterface::IceServer& server : servers) {
     if (!server.urls.empty()) {
       for (const std::string& url : server.urls) {
@@ -539,19 +537,26 @@ bool ParseIceServers(const PeerConnectionInterface::IceServers& servers,
           LOG(LS_ERROR) << "Empty uri.";
           return false;
         }
-        if (!ParseIceServerUrl(server, url, stun_config, turn_config)) {
+        if (!ParseIceServerUrl(server, url, stun_servers, turn_servers)) {
           return false;
         }
       }
     } else if (!server.uri.empty()) {
       // Fallback to old .uri if new .urls isn't present.
-      if (!ParseIceServerUrl(server, server.uri, stun_config, turn_config)) {
+      if (!ParseIceServerUrl(server, server.uri, stun_servers, turn_servers)) {
         return false;
       }
     } else {
       LOG(LS_ERROR) << "Empty uri.";
       return false;
     }
+  }
+  // Candidates must have unique priorities, so that connectivity checks
+  // are performed in a well-defined order.
+  int priority = static_cast<int>(turn_servers->size() - 1);
+  for (cricket::RelayServerConfig& turn_server : *turn_servers) {
+    // First in the list gets highest priority.
+    turn_server.priority = priority--;
   }
   return true;
 }
@@ -568,6 +573,7 @@ PeerConnection::PeerConnection(PeerConnectionFactory* factory)
       remote_streams_(StreamCollection::Create()) {}
 
 PeerConnection::~PeerConnection() {
+  TRACE_EVENT0("webrtc", "PeerConnection::~PeerConnection");
   RTC_DCHECK(signaling_thread()->IsCurrent());
   // Need to detach RTP senders/receivers from WebRtcSession,
   // since it's about to be destroyed.
@@ -582,22 +588,24 @@ PeerConnection::~PeerConnection() {
 bool PeerConnection::Initialize(
     const PeerConnectionInterface::RTCConfiguration& configuration,
     const MediaConstraintsInterface* constraints,
-    PortAllocatorFactoryInterface* allocator_factory,
+    rtc::scoped_ptr<cricket::PortAllocator> allocator,
     rtc::scoped_ptr<DtlsIdentityStoreInterface> dtls_identity_store,
     PeerConnectionObserver* observer) {
+  TRACE_EVENT0("webrtc", "PeerConnection::Initialize");
   RTC_DCHECK(observer != nullptr);
   if (!observer) {
     return false;
   }
   observer_ = observer;
 
-  std::vector<PortAllocatorFactoryInterface::StunConfiguration> stun_config;
-  std::vector<PortAllocatorFactoryInterface::TurnConfiguration> turn_config;
-  if (!ParseIceServers(configuration.servers, &stun_config, &turn_config)) {
+  port_allocator_ = std::move(allocator);
+
+  cricket::ServerAddresses stun_servers;
+  std::vector<cricket::RelayServerConfig> turn_servers;
+  if (!ParseIceServers(configuration.servers, &stun_servers, &turn_servers)) {
     return false;
   }
-  port_allocator_.reset(
-      allocator_factory->CreatePortAllocator(stun_config, turn_config));
+  port_allocator_->SetIceServers(stun_servers, turn_servers);
 
   // To handle both internal and externally created port allocator, we will
   // enable BUNDLE here.
@@ -637,7 +645,7 @@ bool PeerConnection::Initialize(
 
   // Initialize the WebRtcSession. It creates transport channels etc.
   if (!session_->Initialize(factory_->options(), constraints,
-                            dtls_identity_store.Pass(), configuration)) {
+                            std::move(dtls_identity_store), configuration)) {
     return false;
   }
 
@@ -668,9 +676,8 @@ PeerConnection::remote_streams() {
   return remote_streams_;
 }
 
-// TODO(deadbeef): Create RtpSenders immediately here, even if local
-// description hasn't yet been set.
 bool PeerConnection::AddStream(MediaStreamInterface* local_stream) {
+  TRACE_EVENT0("webrtc", "PeerConnection::AddStream");
   if (IsClosed()) {
     return false;
   }
@@ -679,25 +686,22 @@ bool PeerConnection::AddStream(MediaStreamInterface* local_stream) {
   }
 
   local_streams_->AddStream(local_stream);
+  MediaStreamObserver* observer = new MediaStreamObserver(local_stream);
+  observer->SignalAudioTrackAdded.connect(this,
+                                          &PeerConnection::OnAudioTrackAdded);
+  observer->SignalAudioTrackRemoved.connect(
+      this, &PeerConnection::OnAudioTrackRemoved);
+  observer->SignalVideoTrackAdded.connect(this,
+                                          &PeerConnection::OnVideoTrackAdded);
+  observer->SignalVideoTrackRemoved.connect(
+      this, &PeerConnection::OnVideoTrackRemoved);
+  stream_observers_.push_back(rtc::scoped_ptr<MediaStreamObserver>(observer));
 
-  // Find tracks that have already been configured in SDP. This can occur if a
-  // local session description that contains the MSID of these tracks is set
-  // before AddLocalStream is called. It can also occur if the local session
-  // description is not changed and RemoveLocalStream  is called and later
-  // AddLocalStream is called again with the same stream.
   for (const auto& track : local_stream->GetAudioTracks()) {
-    const TrackInfo* track_info =
-        FindTrackInfo(local_audio_tracks_, local_stream->label(), track->id());
-    if (track_info) {
-      CreateAudioSender(local_stream, track.get(), track_info->ssrc);
-    }
+    OnAudioTrackAdded(track.get(), local_stream);
   }
   for (const auto& track : local_stream->GetVideoTracks()) {
-    const TrackInfo* track_info =
-        FindTrackInfo(local_video_tracks_, local_stream->label(), track->id());
-    if (track_info) {
-      CreateVideoSender(local_stream, track.get(), track_info->ssrc);
-    }
+    OnVideoTrackAdded(track.get(), local_stream);
   }
 
   stats_->AddStream(local_stream);
@@ -705,25 +709,24 @@ bool PeerConnection::AddStream(MediaStreamInterface* local_stream) {
   return true;
 }
 
-// TODO(deadbeef): Don't destroy RtpSenders here; they should be kept around
-// indefinitely.
 void PeerConnection::RemoveStream(MediaStreamInterface* local_stream) {
+  TRACE_EVENT0("webrtc", "PeerConnection::RemoveStream");
   for (const auto& track : local_stream->GetAudioTracks()) {
-    const TrackInfo* track_info =
-        FindTrackInfo(local_audio_tracks_, local_stream->label(), track->id());
-    if (track_info) {
-      DestroyAudioSender(local_stream, track.get(), track_info->ssrc);
-    }
+    OnAudioTrackRemoved(track.get(), local_stream);
   }
   for (const auto& track : local_stream->GetVideoTracks()) {
-    const TrackInfo* track_info =
-        FindTrackInfo(local_video_tracks_, local_stream->label(), track->id());
-    if (track_info) {
-      DestroyVideoSender(local_stream, track.get());
-    }
+    OnVideoTrackRemoved(track.get(), local_stream);
   }
 
   local_streams_->RemoveStream(local_stream);
+  stream_observers_.erase(
+      std::remove_if(
+          stream_observers_.begin(), stream_observers_.end(),
+          [local_stream](const rtc::scoped_ptr<MediaStreamObserver>& observer) {
+            return observer->stream()->label().compare(local_stream->label()) ==
+                   0;
+          }),
+      stream_observers_.end());
 
   if (IsClosed()) {
     return;
@@ -733,6 +736,7 @@ void PeerConnection::RemoveStream(MediaStreamInterface* local_stream) {
 
 rtc::scoped_refptr<DtmfSenderInterface> PeerConnection::CreateDtmfSender(
     AudioTrackInterface* track) {
+  TRACE_EVENT0("webrtc", "PeerConnection::CreateDtmfSender");
   if (!track) {
     LOG(LS_ERROR) << "CreateDtmfSender - track is NULL.";
     return NULL;
@@ -749,6 +753,26 @@ rtc::scoped_refptr<DtmfSenderInterface> PeerConnection::CreateDtmfSender(
     return NULL;
   }
   return DtmfSenderProxy::Create(signaling_thread(), sender.get());
+}
+
+rtc::scoped_refptr<RtpSenderInterface> PeerConnection::CreateSender(
+    const std::string& kind,
+    const std::string& stream_id) {
+  TRACE_EVENT0("webrtc", "PeerConnection::CreateSender");
+  RtpSenderInterface* new_sender;
+  if (kind == MediaStreamTrackInterface::kAudioKind) {
+    new_sender = new AudioRtpSender(session_.get(), stats_.get());
+  } else if (kind == MediaStreamTrackInterface::kVideoKind) {
+    new_sender = new VideoRtpSender(session_.get());
+  } else {
+    LOG(LS_ERROR) << "CreateSender called with invalid kind: " << kind;
+    return rtc::scoped_refptr<RtpSenderInterface>();
+  }
+  if (!stream_id.empty()) {
+    new_sender->set_stream_id(stream_id);
+  }
+  senders_.push_back(new_sender);
+  return RtpSenderProxy::Create(signaling_thread(), new_sender);
 }
 
 std::vector<rtc::scoped_refptr<RtpSenderInterface>> PeerConnection::GetSenders()
@@ -773,6 +797,7 @@ PeerConnection::GetReceivers() const {
 bool PeerConnection::GetStats(StatsObserver* observer,
                               MediaStreamTrackInterface* track,
                               StatsOutputLevel level) {
+  TRACE_EVENT0("webrtc", "PeerConnection::GetStats");
   RTC_DCHECK(signaling_thread()->IsCurrent());
   if (!VERIFY(observer != NULL)) {
     LOG(LS_ERROR) << "GetStats - observer is NULL.";
@@ -807,6 +832,7 @@ rtc::scoped_refptr<DataChannelInterface>
 PeerConnection::CreateDataChannel(
     const std::string& label,
     const DataChannelInit* config) {
+  TRACE_EVENT0("webrtc", "PeerConnection::CreateDataChannel");
   bool first_datachannel = !HasDataChannels();
 
   rtc::scoped_ptr<InternalDataChannelInit> internal_config;
@@ -830,6 +856,7 @@ PeerConnection::CreateDataChannel(
 
 void PeerConnection::CreateOffer(CreateSessionDescriptionObserver* observer,
                                  const MediaConstraintsInterface* constraints) {
+  TRACE_EVENT0("webrtc", "PeerConnection::CreateOffer");
   if (!VERIFY(observer != nullptr)) {
     LOG(LS_ERROR) << "CreateOffer - observer is NULL.";
     return;
@@ -881,6 +908,7 @@ void PeerConnection::CreateOffer(CreateSessionDescriptionObserver* observer,
 
 void PeerConnection::CreateOffer(CreateSessionDescriptionObserver* observer,
                                  const RTCOfferAnswerOptions& options) {
+  TRACE_EVENT0("webrtc", "PeerConnection::CreateOffer");
   if (!VERIFY(observer != nullptr)) {
     LOG(LS_ERROR) << "CreateOffer - observer is NULL.";
     return;
@@ -900,6 +928,7 @@ void PeerConnection::CreateOffer(CreateSessionDescriptionObserver* observer,
 void PeerConnection::CreateAnswer(
     CreateSessionDescriptionObserver* observer,
     const MediaConstraintsInterface* constraints) {
+  TRACE_EVENT0("webrtc", "PeerConnection::CreateAnswer");
   if (!VERIFY(observer != nullptr)) {
     LOG(LS_ERROR) << "CreateAnswer - observer is NULL.";
     return;
@@ -919,6 +948,7 @@ void PeerConnection::CreateAnswer(
 void PeerConnection::SetLocalDescription(
     SetSessionDescriptionObserver* observer,
     SessionDescriptionInterface* desc) {
+  TRACE_EVENT0("webrtc", "PeerConnection::SetLocalDescription");
   if (!VERIFY(observer != nullptr)) {
     LOG(LS_ERROR) << "SetLocalDescription - observer is NULL.";
     return;
@@ -940,7 +970,7 @@ void PeerConnection::SetLocalDescription(
   // SCTP sids.
   rtc::SSLRole role;
   if (session_->data_channel_type() == cricket::DCT_SCTP &&
-      session_->GetSslRole(&role)) {
+      session_->GetSslRole(session_->data_channel(), &role)) {
     AllocateSctpSids(role);
   }
 
@@ -949,19 +979,27 @@ void PeerConnection::SetLocalDescription(
   const cricket::ContentInfo* audio_content =
       GetFirstAudioContent(desc->description());
   if (audio_content) {
-    const cricket::AudioContentDescription* audio_desc =
-        static_cast<const cricket::AudioContentDescription*>(
-            audio_content->description);
-    UpdateLocalTracks(audio_desc->streams(), audio_desc->type());
+    if (audio_content->rejected) {
+      RemoveTracks(cricket::MEDIA_TYPE_AUDIO);
+    } else {
+      const cricket::AudioContentDescription* audio_desc =
+          static_cast<const cricket::AudioContentDescription*>(
+              audio_content->description);
+      UpdateLocalTracks(audio_desc->streams(), audio_desc->type());
+    }
   }
 
   const cricket::ContentInfo* video_content =
       GetFirstVideoContent(desc->description());
   if (video_content) {
-    const cricket::VideoContentDescription* video_desc =
-        static_cast<const cricket::VideoContentDescription*>(
-            video_content->description);
-    UpdateLocalTracks(video_desc->streams(), video_desc->type());
+    if (video_content->rejected) {
+      RemoveTracks(cricket::MEDIA_TYPE_VIDEO);
+    } else {
+      const cricket::VideoContentDescription* video_desc =
+          static_cast<const cricket::VideoContentDescription*>(
+              video_content->description);
+      UpdateLocalTracks(video_desc->streams(), video_desc->type());
+    }
   }
 
   const cricket::ContentInfo* data_content =
@@ -988,6 +1026,7 @@ void PeerConnection::SetLocalDescription(
 void PeerConnection::SetRemoteDescription(
     SetSessionDescriptionObserver* observer,
     SessionDescriptionInterface* desc) {
+  TRACE_EVENT0("webrtc", "PeerConnection::SetRemoteDescription");
   if (!VERIFY(observer != nullptr)) {
     LOG(LS_ERROR) << "SetRemoteDescription - observer is NULL.";
     return;
@@ -1009,11 +1048,27 @@ void PeerConnection::SetRemoteDescription(
   // SCTP sids.
   rtc::SSLRole role;
   if (session_->data_channel_type() == cricket::DCT_SCTP &&
-      session_->GetSslRole(&role)) {
+      session_->GetSslRole(session_->data_channel(), &role)) {
     AllocateSctpSids(role);
   }
 
   const cricket::SessionDescription* remote_desc = desc->description();
+  const cricket::ContentInfo* audio_content = GetFirstAudioContent(remote_desc);
+  const cricket::ContentInfo* video_content = GetFirstVideoContent(remote_desc);
+  const cricket::AudioContentDescription* audio_desc =
+      GetFirstAudioContentDescription(remote_desc);
+  const cricket::VideoContentDescription* video_desc =
+      GetFirstVideoContentDescription(remote_desc);
+  const cricket::DataContentDescription* data_desc =
+      GetFirstDataContentDescription(remote_desc);
+
+  // Check if the descriptions include streams, just in case the peer supports
+  // MSID, but doesn't indicate so with "a=msid-semantic".
+  if (remote_desc->msid_supported() ||
+      (audio_desc && !audio_desc->streams().empty()) ||
+      (video_desc && !video_desc->streams().empty())) {
+    remote_peer_supports_msid_ = true;
+  }
 
   // We wait to signal new streams until we finish processing the description,
   // since only at that point will new streams have all their tracks.
@@ -1021,39 +1076,39 @@ void PeerConnection::SetRemoteDescription(
 
   // Find all audio rtp streams and create corresponding remote AudioTracks
   // and MediaStreams.
-  const cricket::ContentInfo* audio_content = GetFirstAudioContent(remote_desc);
   if (audio_content) {
-    const cricket::AudioContentDescription* desc =
-        static_cast<const cricket::AudioContentDescription*>(
-            audio_content->description);
-    UpdateRemoteStreamsList(GetActiveStreams(desc), desc->type(), new_streams);
-    remote_info_.default_audio_track_needed =
-        !remote_desc->msid_supported() && desc->streams().empty() &&
-        MediaContentDirectionHasSend(desc->direction());
+    if (audio_content->rejected) {
+      RemoveTracks(cricket::MEDIA_TYPE_AUDIO);
+    } else {
+      bool default_audio_track_needed =
+          !remote_peer_supports_msid_ &&
+          MediaContentDirectionHasSend(audio_desc->direction());
+      UpdateRemoteStreamsList(GetActiveStreams(audio_desc),
+                              default_audio_track_needed, audio_desc->type(),
+                              new_streams);
+    }
   }
 
   // Find all video rtp streams and create corresponding remote VideoTracks
   // and MediaStreams.
-  const cricket::ContentInfo* video_content = GetFirstVideoContent(remote_desc);
   if (video_content) {
-    const cricket::VideoContentDescription* desc =
-        static_cast<const cricket::VideoContentDescription*>(
-            video_content->description);
-    UpdateRemoteStreamsList(GetActiveStreams(desc), desc->type(), new_streams);
-    remote_info_.default_video_track_needed =
-        !remote_desc->msid_supported() && desc->streams().empty() &&
-        MediaContentDirectionHasSend(desc->direction());
+    if (video_content->rejected) {
+      RemoveTracks(cricket::MEDIA_TYPE_VIDEO);
+    } else {
+      bool default_video_track_needed =
+          !remote_peer_supports_msid_ &&
+          MediaContentDirectionHasSend(video_desc->direction());
+      UpdateRemoteStreamsList(GetActiveStreams(video_desc),
+                              default_video_track_needed, video_desc->type(),
+                              new_streams);
+    }
   }
 
   // Update the DataChannels with the information from the remote peer.
-  const cricket::ContentInfo* data_content = GetFirstDataContent(remote_desc);
-  if (data_content) {
-    const cricket::DataContentDescription* desc =
-        static_cast<const cricket::DataContentDescription*>(
-            data_content->description);
-    if (rtc::starts_with(desc->protocol().data(),
+  if (data_desc) {
+    if (rtc::starts_with(data_desc->protocol().data(),
                          cricket::kMediaProtocolRtpPrefix)) {
-      UpdateRemoteRtpDataChannels(GetActiveStreams(desc));
+      UpdateRemoteRtpDataChannels(GetActiveStreams(data_desc));
     }
   }
 
@@ -1064,58 +1119,21 @@ void PeerConnection::SetRemoteDescription(
     observer_->OnAddStream(new_stream);
   }
 
-  // Find removed MediaStreams.
-  if (remote_info_.IsDefaultMediaStreamNeeded() &&
-      remote_streams_->find(kDefaultStreamLabel) != nullptr) {
-    // The default media stream already exists. No need to do anything.
-  } else {
-    UpdateEndedRemoteMediaStreams();
-    remote_info_.msid_supported |= remote_streams_->count() > 0;
-  }
-  MaybeCreateDefaultStream();
+  UpdateEndedRemoteMediaStreams();
 
   SetSessionDescriptionMsg* msg = new SetSessionDescriptionMsg(observer);
   signaling_thread()->Post(this, MSG_SET_SESSIONDESCRIPTION_SUCCESS, msg);
 }
 
 bool PeerConnection::SetConfiguration(const RTCConfiguration& config) {
+  TRACE_EVENT0("webrtc", "PeerConnection::SetConfiguration");
   if (port_allocator_) {
-    std::vector<PortAllocatorFactoryInterface::StunConfiguration> stuns;
-    std::vector<PortAllocatorFactoryInterface::TurnConfiguration> turns;
-    if (!ParseIceServers(config.servers, &stuns, &turns)) {
+    cricket::ServerAddresses stun_servers;
+    std::vector<cricket::RelayServerConfig> turn_servers;
+    if (!ParseIceServers(config.servers, &stun_servers, &turn_servers)) {
       return false;
     }
-
-    std::vector<rtc::SocketAddress> stun_hosts;
-    typedef std::vector<StunConfiguration>::const_iterator StunIt;
-    for (StunIt stun_it = stuns.begin(); stun_it != stuns.end(); ++stun_it) {
-      stun_hosts.push_back(stun_it->server);
-    }
-
-    rtc::SocketAddress stun_addr;
-    if (!stun_hosts.empty()) {
-      stun_addr = stun_hosts.front();
-      LOG(LS_INFO) << "SetConfiguration: StunServer Address: "
-                   << stun_addr.ToString();
-    }
-
-    for (size_t i = 0; i < turns.size(); ++i) {
-      cricket::RelayCredentials credentials(turns[i].username,
-                                            turns[i].password);
-      cricket::RelayServerConfig relay_server(cricket::RELAY_TURN);
-      cricket::ProtocolType protocol;
-      if (cricket::StringToProto(turns[i].transport_type.c_str(), &protocol)) {
-        relay_server.ports.push_back(cricket::ProtocolAddress(
-            turns[i].server, protocol, turns[i].secure));
-        relay_server.credentials = credentials;
-        LOG(LS_INFO) << "SetConfiguration: TurnServer Address: "
-                     << turns[i].server.ToString();
-      } else {
-        LOG(LS_WARNING) << "Ignoring TURN server " << turns[i].server << ". "
-                        << "Reason= Incorrect " << turns[i].transport_type
-                        << " transport parameter.";
-      }
-    }
+    port_allocator_->SetIceServers(stun_servers, turn_servers);
   }
   session_->SetIceConfig(session_->ParseIceConfig(config));
   return session_->SetIceTransports(config.type);
@@ -1123,10 +1141,12 @@ bool PeerConnection::SetConfiguration(const RTCConfiguration& config) {
 
 bool PeerConnection::AddIceCandidate(
     const IceCandidateInterface* ice_candidate) {
+  TRACE_EVENT0("webrtc", "PeerConnection::AddIceCandidate");
   return session_->ProcessIceMessage(ice_candidate);
 }
 
 void PeerConnection::RegisterUMAObserver(UMAObserver* observer) {
+  TRACE_EVENT0("webrtc", "PeerConnection::RegisterUmaObserver");
   uma_observer_ = observer;
 
   if (session_) {
@@ -1156,6 +1176,7 @@ const SessionDescriptionInterface* PeerConnection::remote_description() const {
 }
 
 void PeerConnection::Close() {
+  TRACE_EVENT0("webrtc", "PeerConnection::Close");
   // Update stats here so that we have the most recent stats for tracks and
   // streams before the channels are closed.
   stats_->UpdateStats(kStatsOutputLevelStandard);
@@ -1223,6 +1244,10 @@ void PeerConnection::OnMessage(rtc::Message* msg) {
       delete param;
       break;
     }
+    case MSG_FREE_DATACHANNELS: {
+      sctp_data_channels_to_free_.clear();
+      break;
+    }
     default:
       RTC_DCHECK(false && "Not implemented");
       break;
@@ -1264,49 +1289,6 @@ void PeerConnection::DestroyVideoReceiver(MediaStreamInterface* stream,
   } else {
     (*it)->Stop();
     receivers_.erase(it);
-  }
-}
-
-void PeerConnection::CreateAudioSender(MediaStreamInterface* stream,
-                                       AudioTrackInterface* audio_track,
-                                       uint32_t ssrc) {
-  senders_.push_back(new AudioRtpSender(audio_track, ssrc, session_.get()));
-  stats_->AddLocalAudioTrack(audio_track, ssrc);
-}
-
-void PeerConnection::CreateVideoSender(MediaStreamInterface* stream,
-                                       VideoTrackInterface* video_track,
-                                       uint32_t ssrc) {
-  senders_.push_back(new VideoRtpSender(video_track, ssrc, session_.get()));
-}
-
-// TODO(deadbeef): Keep RtpSenders around even if track goes away in local
-// description.
-void PeerConnection::DestroyAudioSender(MediaStreamInterface* stream,
-                                        AudioTrackInterface* audio_track,
-                                        uint32_t ssrc) {
-  auto it = FindSenderForTrack(audio_track);
-  if (it == senders_.end()) {
-    LOG(LS_WARNING) << "RtpSender for track with id " << audio_track->id()
-                    << " doesn't exist.";
-    return;
-  } else {
-    (*it)->Stop();
-    senders_.erase(it);
-  }
-  stats_->RemoveLocalAudioTrack(audio_track, ssrc);
-}
-
-void PeerConnection::DestroyVideoSender(MediaStreamInterface* stream,
-                                        VideoTrackInterface* video_track) {
-  auto it = FindSenderForTrack(video_track);
-  if (it == senders_.end()) {
-    LOG(LS_WARNING) << "RtpSender for track with id " << video_track->id()
-                    << " doesn't exist.";
-    return;
-  } else {
-    (*it)->Stop();
-    senders_.erase(it);
   }
 }
 
@@ -1362,6 +1344,80 @@ void PeerConnection::ChangeSignalingState(
   observer_->OnStateChange(PeerConnectionObserver::kSignalingState);
 }
 
+void PeerConnection::OnAudioTrackAdded(AudioTrackInterface* track,
+                                       MediaStreamInterface* stream) {
+  auto sender = FindSenderForTrack(track);
+  if (sender != senders_.end()) {
+    // We already have a sender for this track, so just change the stream_id
+    // so that it's correct in the next call to CreateOffer.
+    (*sender)->set_stream_id(stream->label());
+    return;
+  }
+
+  // Normal case; we've never seen this track before.
+  AudioRtpSender* new_sender =
+      new AudioRtpSender(track, stream->label(), session_.get(), stats_.get());
+  senders_.push_back(new_sender);
+  // If the sender has already been configured in SDP, we call SetSsrc,
+  // which will connect the sender to the underlying transport. This can
+  // occur if a local session description that contains the ID of the sender
+  // is set before AddStream is called. It can also occur if the local
+  // session description is not changed and RemoveStream is called, and
+  // later AddStream is called again with the same stream.
+  const TrackInfo* track_info =
+      FindTrackInfo(local_audio_tracks_, stream->label(), track->id());
+  if (track_info) {
+    new_sender->SetSsrc(track_info->ssrc);
+  }
+}
+
+// TODO(deadbeef): Don't destroy RtpSenders here; they should be kept around
+// indefinitely, when we have unified plan SDP.
+void PeerConnection::OnAudioTrackRemoved(AudioTrackInterface* track,
+                                         MediaStreamInterface* stream) {
+  auto sender = FindSenderForTrack(track);
+  if (sender == senders_.end()) {
+    LOG(LS_WARNING) << "RtpSender for track with id " << track->id()
+                    << " doesn't exist.";
+    return;
+  }
+  (*sender)->Stop();
+  senders_.erase(sender);
+}
+
+void PeerConnection::OnVideoTrackAdded(VideoTrackInterface* track,
+                                       MediaStreamInterface* stream) {
+  auto sender = FindSenderForTrack(track);
+  if (sender != senders_.end()) {
+    // We already have a sender for this track, so just change the stream_id
+    // so that it's correct in the next call to CreateOffer.
+    (*sender)->set_stream_id(stream->label());
+    return;
+  }
+
+  // Normal case; we've never seen this track before.
+  VideoRtpSender* new_sender =
+      new VideoRtpSender(track, stream->label(), session_.get());
+  senders_.push_back(new_sender);
+  const TrackInfo* track_info =
+      FindTrackInfo(local_video_tracks_, stream->label(), track->id());
+  if (track_info) {
+    new_sender->SetSsrc(track_info->ssrc);
+  }
+}
+
+void PeerConnection::OnVideoTrackRemoved(VideoTrackInterface* track,
+                                         MediaStreamInterface* stream) {
+  auto sender = FindSenderForTrack(track);
+  if (sender == senders_.end()) {
+    LOG(LS_WARNING) << "RtpSender for track with id " << track->id()
+                    << " doesn't exist.";
+    return;
+  }
+  (*sender)->Stop();
+  senders_.erase(sender);
+}
+
 void PeerConnection::PostSetSessionDescriptionFailure(
     SetSessionDescriptionObserver* observer,
     const std::string& error) {
@@ -1385,7 +1441,7 @@ bool PeerConnection::GetOptionsForOffer(
     return false;
   }
 
-  SetStreams(session_options, local_streams_, rtp_data_channels_);
+  AddSendStreams(session_options, senders_, rtp_data_channels_);
   // Offer to receive audio/video if the constraint is not set and there are
   // send streams, or we're currently receiving.
   if (rtc_options.offer_to_receive_audio == RTCOfferAnswerOptions::kUndefined) {
@@ -1418,7 +1474,7 @@ bool PeerConnection::GetOptionsForAnswer(
     return false;
   }
 
-  SetStreams(session_options, local_streams_, rtp_data_channels_);
+  AddSendStreams(session_options, senders_, rtp_data_channels_);
   session_options->bundle_enabled =
       session_options->bundle_enabled &&
       (session_options->has_audio() || session_options->has_video() ||
@@ -1433,25 +1489,34 @@ bool PeerConnection::GetOptionsForAnswer(
   return true;
 }
 
+void PeerConnection::RemoveTracks(cricket::MediaType media_type) {
+  UpdateLocalTracks(std::vector<cricket::StreamParams>(), media_type);
+  UpdateRemoteStreamsList(std::vector<cricket::StreamParams>(), false,
+                          media_type, nullptr);
+}
+
 void PeerConnection::UpdateRemoteStreamsList(
     const cricket::StreamParamsVec& streams,
+    bool default_track_needed,
     cricket::MediaType media_type,
     StreamCollection* new_streams) {
   TrackInfos* current_tracks = GetRemoteTracks(media_type);
 
   // Find removed tracks. I.e., tracks where the track id or ssrc don't match
-  // the
-  // new StreamParam.
+  // the new StreamParam.
   auto track_it = current_tracks->begin();
   while (track_it != current_tracks->end()) {
     const TrackInfo& info = *track_it;
     const cricket::StreamParams* params =
         cricket::GetStreamBySsrc(streams, info.ssrc);
-    if (!params || params->id != info.track_id) {
+    bool track_exists = params && params->id == info.track_id;
+    // If this is a default track, and we still need it, don't remove it.
+    if ((info.stream_label == kDefaultStreamLabel && default_track_needed) ||
+        track_exists) {
+      ++track_it;
+    } else {
       OnRemoteTrackRemoved(info.stream_label, info.track_id, media_type);
       track_it = current_tracks->erase(track_it);
-    } else {
-      ++track_it;
     }
   }
 
@@ -1479,6 +1544,29 @@ void PeerConnection::UpdateRemoteStreamsList(
       OnRemoteTrackSeen(stream_label, track_id, ssrc, media_type);
     }
   }
+
+  // Add default track if necessary.
+  if (default_track_needed) {
+    rtc::scoped_refptr<MediaStreamInterface> default_stream =
+        remote_streams_->find(kDefaultStreamLabel);
+    if (!default_stream) {
+      // Create the new default MediaStream.
+      default_stream =
+          remote_stream_factory_->CreateMediaStream(kDefaultStreamLabel);
+      remote_streams_->AddStream(default_stream);
+      new_streams->AddStream(default_stream);
+    }
+    std::string default_track_id = (media_type == cricket::MEDIA_TYPE_AUDIO)
+                                       ? kDefaultAudioTrackLabel
+                                       : kDefaultVideoTrackLabel;
+    const TrackInfo* default_track_info =
+        FindTrackInfo(*current_tracks, kDefaultStreamLabel, default_track_id);
+    if (!default_track_info) {
+      current_tracks->push_back(
+          TrackInfo(kDefaultStreamLabel, default_track_id, 0));
+      OnRemoteTrackSeen(kDefaultStreamLabel, default_track_id, 0, media_type);
+    }
+  }
 }
 
 void PeerConnection::OnRemoteTrackSeen(const std::string& stream_label,
@@ -1488,8 +1576,8 @@ void PeerConnection::OnRemoteTrackSeen(const std::string& stream_label,
   MediaStreamInterface* stream = remote_streams_->find(stream_label);
 
   if (media_type == cricket::MEDIA_TYPE_AUDIO) {
-    AudioTrackInterface* audio_track =
-        remote_stream_factory_->AddAudioTrack(stream, track_id);
+    AudioTrackInterface* audio_track = remote_stream_factory_->AddAudioTrack(
+        ssrc, session_.get(), stream, track_id);
     CreateAudioReceiver(stream, audio_track, ssrc);
   } else if (media_type == cricket::MEDIA_TYPE_VIDEO) {
     VideoTrackInterface* video_track =
@@ -1538,41 +1626,6 @@ void PeerConnection::UpdateEndedRemoteMediaStreams() {
   for (const auto& stream : streams_to_remove) {
     remote_streams_->RemoveStream(stream);
     observer_->OnRemoveStream(stream);
-  }
-}
-
-void PeerConnection::MaybeCreateDefaultStream() {
-  if (!remote_info_.IsDefaultMediaStreamNeeded()) {
-    return;
-  }
-
-  bool default_created = false;
-
-  rtc::scoped_refptr<MediaStreamInterface> default_remote_stream =
-      remote_streams_->find(kDefaultStreamLabel);
-  if (default_remote_stream == nullptr) {
-    default_created = true;
-    default_remote_stream =
-        remote_stream_factory_->CreateMediaStream(kDefaultStreamLabel);
-    remote_streams_->AddStream(default_remote_stream);
-  }
-  if (remote_info_.default_audio_track_needed &&
-      default_remote_stream->GetAudioTracks().size() == 0) {
-    remote_audio_tracks_.push_back(
-        TrackInfo(kDefaultStreamLabel, kDefaultAudioTrackLabel, 0));
-    OnRemoteTrackSeen(kDefaultStreamLabel, kDefaultAudioTrackLabel, 0,
-                      cricket::MEDIA_TYPE_AUDIO);
-  }
-  if (remote_info_.default_video_track_needed &&
-      default_remote_stream->GetVideoTracks().size() == 0) {
-    remote_video_tracks_.push_back(
-        TrackInfo(kDefaultStreamLabel, kDefaultVideoTrackLabel, 0));
-    OnRemoteTrackSeen(kDefaultStreamLabel, kDefaultVideoTrackLabel, 0,
-                      cricket::MEDIA_TYPE_VIDEO);
-  }
-  if (default_created) {
-    stats_->AddStream(default_remote_stream);
-    observer_->OnAddStream(default_remote_stream);
   }
 }
 
@@ -1643,62 +1696,44 @@ void PeerConnection::OnLocalTrackSeen(const std::string& stream_label,
                                       const std::string& track_id,
                                       uint32_t ssrc,
                                       cricket::MediaType media_type) {
-  MediaStreamInterface* stream = local_streams_->find(stream_label);
-  if (!stream) {
-    LOG(LS_WARNING) << "An unknown local MediaStream with label "
-                    << stream_label << " has been configured.";
+  RtpSenderInterface* sender = FindSenderById(track_id);
+  if (!sender) {
+    LOG(LS_WARNING) << "An unknown RtpSender with id " << track_id
+                    << " has been configured in the local description.";
     return;
   }
 
-  if (media_type == cricket::MEDIA_TYPE_AUDIO) {
-    AudioTrackInterface* audio_track = stream->FindAudioTrack(track_id);
-    if (!audio_track) {
-      LOG(LS_WARNING) << "An unknown local AudioTrack with id , " << track_id
-                      << " has been configured.";
-      return;
-    }
-    CreateAudioSender(stream, audio_track, ssrc);
-  } else if (media_type == cricket::MEDIA_TYPE_VIDEO) {
-    VideoTrackInterface* video_track = stream->FindVideoTrack(track_id);
-    if (!video_track) {
-      LOG(LS_WARNING) << "An unknown local VideoTrack with id , " << track_id
-                      << " has been configured.";
-      return;
-    }
-    CreateVideoSender(stream, video_track, ssrc);
-  } else {
-    RTC_DCHECK(false && "Invalid media type");
+  if (sender->media_type() != media_type) {
+    LOG(LS_WARNING) << "An RtpSender has been configured in the local"
+                    << " description with an unexpected media type.";
+    return;
   }
+
+  sender->set_stream_id(stream_label);
+  sender->SetSsrc(ssrc);
 }
 
 void PeerConnection::OnLocalTrackRemoved(const std::string& stream_label,
                                          const std::string& track_id,
                                          uint32_t ssrc,
                                          cricket::MediaType media_type) {
-  MediaStreamInterface* stream = local_streams_->find(stream_label);
-  if (!stream) {
-    // This is the normal case. I.e., RemoveLocalStream has been called and the
+  RtpSenderInterface* sender = FindSenderById(track_id);
+  if (!sender) {
+    // This is the normal case. I.e., RemoveStream has been called and the
     // SessionDescriptions has been renegotiated.
     return;
   }
-  // A track has been removed from the SessionDescription but the MediaStream
-  // is still associated with PeerConnection. This only occurs if the SDP
-  // doesn't match with the calls to AddLocalStream and RemoveLocalStream.
-  if (media_type == cricket::MEDIA_TYPE_AUDIO) {
-    AudioTrackInterface* audio_track = stream->FindAudioTrack(track_id);
-    if (!audio_track) {
-      return;
-    }
-    DestroyAudioSender(stream, audio_track, ssrc);
-  } else if (media_type == cricket::MEDIA_TYPE_VIDEO) {
-    VideoTrackInterface* video_track = stream->FindVideoTrack(track_id);
-    if (!video_track) {
-      return;
-    }
-    DestroyVideoSender(stream, video_track);
-  } else {
-    RTC_DCHECK(false && "Invalid media type.");
+
+  // A sender has been removed from the SessionDescription but it's still
+  // associated with the PeerConnection. This only occurs if the SDP doesn't
+  // match with the calls to CreateSender, AddStream and RemoveStream.
+  if (sender->media_type() != media_type) {
+    LOG(LS_WARNING) << "An RtpSender has been configured in the local"
+                    << " description with an unexpected media type.";
+    return;
   }
+
+  sender->SetSsrc(0);
 }
 
 void PeerConnection::UpdateLocalRtpDataChannels(
@@ -1806,7 +1841,7 @@ rtc::scoped_refptr<DataChannel> PeerConnection::InternalCreateDataChannel(
   if (session_->data_channel_type() == cricket::DCT_SCTP) {
     if (new_config.id < 0) {
       rtc::SSLRole role;
-      if (session_->GetSslRole(&role) &&
+      if ((session_->GetSslRole(session_->data_channel(), &role)) &&
           !sid_allocator_.AllocateSid(role, &new_config.id)) {
         LOG(LS_ERROR) << "No id can be allocated for the SCTP data channel.";
         return nullptr;
@@ -1860,13 +1895,18 @@ void PeerConnection::AllocateSctpSids(rtc::SSLRole role) {
 }
 
 void PeerConnection::OnSctpDataChannelClosed(DataChannel* channel) {
+  RTC_DCHECK(signaling_thread()->IsCurrent());
   for (auto it = sctp_data_channels_.begin(); it != sctp_data_channels_.end();
        ++it) {
     if (it->get() == channel) {
       if (channel->id() >= 0) {
         sid_allocator_.ReleaseSid(channel->id());
       }
+      // Since this method is triggered by a signal from the DataChannel,
+      // we can't free it directly here; we need to free it asynchronously.
+      sctp_data_channels_to_free_.push_back(*it);
       sctp_data_channels_.erase(it);
+      signaling_thread()->Post(this, MSG_FREE_DATACHANNELS, nullptr);
       return;
     }
   }
@@ -1914,6 +1954,15 @@ void PeerConnection::OnDataChannelOpenMessage(
 
   observer_->OnDataChannel(
       DataChannelProxy::Create(signaling_thread(), channel));
+}
+
+RtpSenderInterface* PeerConnection::FindSenderById(const std::string& id) {
+  auto it =
+      std::find_if(senders_.begin(), senders_.end(),
+                   [id](const rtc::scoped_refptr<RtpSenderInterface>& sender) {
+                     return sender->id() == id;
+                   });
+  return it != senders_.end() ? it->get() : nullptr;
 }
 
 std::vector<rtc::scoped_refptr<RtpSenderInterface>>::iterator

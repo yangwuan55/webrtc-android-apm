@@ -31,12 +31,10 @@ LOCAL_SRC_FILES := \
     logging.cc \
     metrics_default.cc \
     rw_lock.cc \
-    thread.cc \
     trace_impl.cc \
     condition_variable_posix.cc \
     critical_section_posix.cc \
     sleep.cc \
-    thread_posix.cc \
     trace_posix.cc \
     rw_lock_posix.cc \
 

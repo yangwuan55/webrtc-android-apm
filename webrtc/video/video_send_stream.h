@@ -17,7 +17,7 @@
 #include "webrtc/call.h"
 #include "webrtc/call/transport_adapter.h"
 #include "webrtc/common_video/libyuv/include/webrtc_libyuv.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_rtcp_defines.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "webrtc/system_wrappers/include/critical_section_wrapper.h"
 #include "webrtc/video/encoded_frame_callback_adapter.h"
 #include "webrtc/video/send_statistics_proxy.h"
@@ -27,6 +27,7 @@
 
 namespace webrtc {
 
+class BitrateAllocator;
 class CallStats;
 class CongestionController;
 class EncoderStateFeedback;
@@ -43,6 +44,7 @@ class VideoSendStream : public webrtc::VideoSendStream,
                   ProcessThread* module_process_thread,
                   CallStats* call_stats,
                   CongestionController* congestion_controller,
+                  BitrateAllocator* bitrate_allocator,
                   const VideoSendStream::Config& config,
                   const VideoEncoderConfig& encoder_config,
                   const std::map<uint32_t, RtpState>& suspended_ssrcs);
@@ -68,10 +70,13 @@ class VideoSendStream : public webrtc::VideoSendStream,
   RtpStateMap GetRtpStates() const;
 
   int64_t GetRtt() const;
+  int GetPaddingNeededBps() const;
 
  private:
   bool SetSendCodec(VideoCodec video_codec);
   void ConfigureSsrcs();
+
+  SendStatisticsProxy stats_proxy_;
   TransportAdapter transport_adapter_;
   EncodedFrameCallbackAdapter encoded_frame_proxy_;
   const VideoSendStream::Config config_;
@@ -91,8 +96,6 @@ class VideoSendStream : public webrtc::VideoSendStream,
   // start bitrate initially, instead of the one reported by VideoEngine (which
   // defaults to too high).
   bool use_config_bitrate_;
-
-  SendStatisticsProxy stats_proxy_;
 };
 }  // namespace internal
 }  // namespace webrtc

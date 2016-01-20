@@ -32,10 +32,10 @@
 #endif
 
 #include "webrtc/common_types.h"
-#include "webrtc/modules/interface/module_common_types.h"
-#include "webrtc/modules/utility/interface/process_thread.h"
-#include "webrtc/modules/video_render/include/video_render.h"
-#include "webrtc/modules/video_render/include/video_render_defines.h"
+#include "webrtc/modules/include/module_common_types.h"
+#include "webrtc/modules/utility/include/process_thread.h"
+#include "webrtc/modules/video_render/video_render.h"
+#include "webrtc/modules/video_render/video_render_defines.h"
 #include "webrtc/system_wrappers/include/sleep.h"
 #include "webrtc/system_wrappers/include/tick_util.h"
 #include "webrtc/system_wrappers/include/trace.h"
@@ -244,7 +244,7 @@ int WebRtcCreateWindow(Window *outWindow, Display **outDisplay, int winNum, int 
 
     return 0;
 }
-#endif  // LINUX
+#endif  // WEBRTC_LINUX
 
 // Note: Mac code is in testApi_mac.mm.
 

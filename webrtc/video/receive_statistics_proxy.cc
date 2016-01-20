@@ -13,7 +13,7 @@
 #include <cmath>
 
 #include "webrtc/base/checks.h"
-#include "webrtc/modules/video_coding/codecs/interface/video_codec_interface.h"
+#include "webrtc/modules/video_coding/include/video_codec_interface.h"
 #include "webrtc/system_wrappers/include/clock.h"
 #include "webrtc/system_wrappers/include/critical_section_wrapper.h"
 #include "webrtc/system_wrappers/include/metrics.h"
@@ -37,37 +37,39 @@ ReceiveStatisticsProxy::~ReceiveStatisticsProxy() {
 void ReceiveStatisticsProxy::UpdateHistograms() {
   int fraction_lost = report_block_stats_.FractionLostInPercent();
   if (fraction_lost != -1) {
-    RTC_HISTOGRAM_PERCENTAGE("WebRTC.Video.ReceivedPacketsLostInPercent",
-        fraction_lost);
+    RTC_HISTOGRAM_PERCENTAGE_SPARSE("WebRTC.Video.ReceivedPacketsLostInPercent",
+                                    fraction_lost);
   }
   const int kMinRequiredSamples = 200;
   int samples = static_cast<int>(render_fps_tracker_.TotalSampleCount());
   if (samples > kMinRequiredSamples) {
-    RTC_HISTOGRAM_COUNTS_100("WebRTC.Video.RenderFramesPerSecond",
-        static_cast<int>(render_fps_tracker_.ComputeTotalRate()));
-    RTC_HISTOGRAM_COUNTS_100000("WebRTC.Video.RenderSqrtPixelsPerSecond",
-        static_cast<int>(render_pixel_tracker_.ComputeTotalRate()));
+    RTC_HISTOGRAM_COUNTS_SPARSE_100("WebRTC.Video.RenderFramesPerSecond",
+        round(render_fps_tracker_.ComputeTotalRate()));
+    RTC_HISTOGRAM_COUNTS_SPARSE_100000("WebRTC.Video.RenderSqrtPixelsPerSecond",
+        round(render_pixel_tracker_.ComputeTotalRate()));
   }
   int width = render_width_counter_.Avg(kMinRequiredSamples);
   int height = render_height_counter_.Avg(kMinRequiredSamples);
   if (width != -1) {
-    RTC_HISTOGRAM_COUNTS_10000("WebRTC.Video.ReceivedWidthInPixels", width);
-    RTC_HISTOGRAM_COUNTS_10000("WebRTC.Video.ReceivedHeightInPixels", height);
+    RTC_HISTOGRAM_COUNTS_SPARSE_10000("WebRTC.Video.ReceivedWidthInPixels",
+                                      width);
+    RTC_HISTOGRAM_COUNTS_SPARSE_10000("WebRTC.Video.ReceivedHeightInPixels",
+                                      height);
   }
   int qp = qp_counters_.vp8.Avg(kMinRequiredSamples);
   if (qp != -1)
-    RTC_HISTOGRAM_COUNTS_200("WebRTC.Video.Decoded.Vp8.Qp", qp);
+    RTC_HISTOGRAM_COUNTS_SPARSE_200("WebRTC.Video.Decoded.Vp8.Qp", qp);
 
   // TODO(asapersson): DecoderTiming() is call periodically (each 1000ms) and
   // not per frame. Change decode time to include every frame.
   const int kMinRequiredDecodeSamples = 5;
   int decode_ms = decode_time_counter_.Avg(kMinRequiredDecodeSamples);
   if (decode_ms != -1)
-    RTC_HISTOGRAM_COUNTS_1000("WebRTC.Video.DecodeTimeInMs", decode_ms);
+    RTC_HISTOGRAM_COUNTS_SPARSE_1000("WebRTC.Video.DecodeTimeInMs", decode_ms);
 
   int delay_ms = delay_counter_.Avg(kMinRequiredDecodeSamples);
   if (delay_ms != -1)
-    RTC_HISTOGRAM_COUNTS_10000("WebRTC.Video.OnewayDelayInMs", delay_ms);
+    RTC_HISTOGRAM_COUNTS_SPARSE_10000("WebRTC.Video.OnewayDelayInMs", delay_ms);
 }
 
 VideoReceiveStream::Stats ReceiveStatisticsProxy::GetStats() const {
@@ -80,6 +82,11 @@ void ReceiveStatisticsProxy::OnIncomingPayloadType(int payload_type) {
   stats_.current_payload_type = payload_type;
 }
 
+void ReceiveStatisticsProxy::OnDecoderImplementationName(
+    const char* implementation_name) {
+  rtc::CritScope lock(&crit_);
+  stats_.decoder_implementation_name = implementation_name;
+}
 void ReceiveStatisticsProxy::OnIncomingRate(unsigned int framerate,
                                             unsigned int bitrate_bps) {
   rtc::CritScope lock(&crit_);

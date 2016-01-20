@@ -26,7 +26,7 @@
 #include "webrtc/base/checks.h"
 #include "webrtc/base/safe_conversions.h"
 #include "webrtc/base/scoped_ptr.h"
-#include "webrtc/modules/audio_coding/codecs/pcm16b/include/pcm16b.h"
+#include "webrtc/modules/audio_coding/codecs/pcm16b/pcm16b.h"
 #include "webrtc/modules/audio_coding/neteq/include/neteq.h"
 #include "webrtc/modules/audio_coding/neteq/tools/input_audio_file.h"
 #include "webrtc/modules/audio_coding/neteq/tools/output_audio_file.h"
@@ -34,7 +34,7 @@
 #include "webrtc/modules/audio_coding/neteq/tools/packet.h"
 #include "webrtc/modules/audio_coding/neteq/tools/rtc_event_log_source.h"
 #include "webrtc/modules/audio_coding/neteq/tools/rtp_file_source.h"
-#include "webrtc/modules/interface/module_common_types.h"
+#include "webrtc/modules/include/module_common_types.h"
 #include "webrtc/system_wrappers/include/trace.h"
 #include "webrtc/test/rtp_file_reader.h"
 #include "webrtc/test/testsupport/fileutils.h"
@@ -189,8 +189,9 @@ std::string CodecName(webrtc::NetEqDecoder codec) {
 
 void RegisterPayloadType(NetEq* neteq,
                          webrtc::NetEqDecoder codec,
+                         const std::string& name,
                          google::int32 flag) {
-  if (neteq->RegisterPayloadType(codec, static_cast<uint8_t>(flag))) {
+  if (neteq->RegisterPayloadType(codec, name, static_cast<uint8_t>(flag))) {
     std::cerr << "Cannot register payload type " << flag << " as "
               << CodecName(codec) << std::endl;
     exit(1);
@@ -200,30 +201,40 @@ void RegisterPayloadType(NetEq* neteq,
 // Registers all decoders in |neteq|.
 void RegisterPayloadTypes(NetEq* neteq) {
   assert(neteq);
-  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderPCMu, FLAGS_pcmu);
-  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderPCMa, FLAGS_pcma);
-  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderILBC, FLAGS_ilbc);
-  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderISAC, FLAGS_isac);
-  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderISACswb,
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderPCMu, "pcmu",
+                      FLAGS_pcmu);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderPCMa, "pcma",
+                      FLAGS_pcma);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderILBC, "ilbc",
+                      FLAGS_ilbc);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderISAC, "isac",
+                      FLAGS_isac);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderISACswb, "isac-swb",
                       FLAGS_isac_swb);
-  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderOpus, FLAGS_opus);
-  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderPCM16B,
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderOpus, "opus",
+                      FLAGS_opus);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderPCM16B, "pcm16-nb",
                       FLAGS_pcm16b);
-  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderPCM16Bwb,
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderPCM16Bwb, "pcm16-wb",
                       FLAGS_pcm16b_wb);
   RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderPCM16Bswb32kHz,
-                      FLAGS_pcm16b_swb32);
+                      "pcm16-swb32", FLAGS_pcm16b_swb32);
   RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderPCM16Bswb48kHz,
-                      FLAGS_pcm16b_swb48);
-  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderG722, FLAGS_g722);
-  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderAVT, FLAGS_avt);
-  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderRED, FLAGS_red);
-  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderCNGnb, FLAGS_cn_nb);
-  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderCNGwb, FLAGS_cn_wb);
+                      "pcm16-swb48", FLAGS_pcm16b_swb48);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderG722, "g722",
+                      FLAGS_g722);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderAVT, "avt",
+                      FLAGS_avt);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderRED, "red",
+                      FLAGS_red);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderCNGnb, "cng-nb",
+                      FLAGS_cn_nb);
+  RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderCNGwb, "cng-wb",
+                      FLAGS_cn_wb);
   RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderCNGswb32kHz,
-                      FLAGS_cn_swb32);
+                      "cng-swb32", FLAGS_cn_swb32);
   RegisterPayloadType(neteq, webrtc::NetEqDecoder::kDecoderCNGswb48kHz,
-                      FLAGS_cn_swb48);
+                      "cng-swb48", FLAGS_cn_swb48);
 }
 
 void PrintCodecMappingEntry(webrtc::NetEqDecoder codec, google::int32 flag) {
@@ -399,23 +410,12 @@ int main(int argc, char* argv[]) {
 
   printf("Input file: %s\n", argv[1]);
 
-  // TODO(ivoc): Modify the RtpFileSource::Create and RtcEventLogSource::Create
-  //             functions to return a nullptr on failure instead of crashing
-  //             the program.
-
-  // This temporary solution uses a RtpFileReader directly to check if the file
-  // is a valid RtpDump file.
   bool is_rtp_dump = false;
-  {
-    rtc::scoped_ptr<webrtc::test::RtpFileReader> rtp_reader(
-        webrtc::test::RtpFileReader::Create(
-            webrtc::test::RtpFileReader::kRtpDump, argv[1]));
-    if (rtp_reader)
-      is_rtp_dump = true;
-  }
   rtc::scoped_ptr<webrtc::test::PacketSource> file_source;
   webrtc::test::RtcEventLogSource* event_log_source = nullptr;
-  if (is_rtp_dump) {
+  if (webrtc::test::RtpFileSource::ValidRtpDump(argv[1]) ||
+      webrtc::test::RtpFileSource::ValidPcap(argv[1])) {
+    is_rtp_dump = true;
     file_source.reset(webrtc::test::RtpFileSource::Create(argv[1]));
   } else {
     event_log_source = webrtc::test::RtcEventLogSource::Create(argv[1]);
@@ -558,7 +558,7 @@ int main(int argc, char* argv[]) {
         payload_ptr = payload.get();
       }
       int error = neteq->InsertPacket(
-          rtp_header, payload_ptr, payload_len,
+          rtp_header, rtc::ArrayView<const uint8_t>(payload_ptr, payload_len),
           static_cast<uint32_t>(packet->time_ms() * sample_rate_hz / 1000));
       if (error != NetEq::kOK) {
         if (neteq->LastError() == NetEq::kUnknownRtpPayloadType) {
@@ -609,7 +609,7 @@ int main(int argc, char* argv[]) {
       static const size_t kOutDataLen =
           kOutputBlockSizeMs * kMaxSamplesPerMs * kMaxChannels;
       int16_t out_data[kOutDataLen];
-      int num_channels;
+      size_t num_channels;
       size_t samples_per_channel;
       int error = neteq->GetAudio(kOutDataLen, out_data, &samples_per_channel,
                                    &num_channels, NULL);

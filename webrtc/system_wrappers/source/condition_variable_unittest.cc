@@ -11,9 +11,9 @@
 #include "webrtc/system_wrappers/include/condition_variable_wrapper.h"
 
 #include "testing/gtest/include/gtest/gtest.h"
+#include "webrtc/base/platform_thread.h"
 #include "webrtc/base/scoped_ptr.h"
 #include "webrtc/system_wrappers/include/critical_section_wrapper.h"
-#include "webrtc/system_wrappers/include/thread_wrapper.h"
 #include "webrtc/system_wrappers/include/tick_util.h"
 #include "webrtc/system_wrappers/include/trace.h"
 
@@ -144,12 +144,10 @@ bool WaitingRunFunction(void* obj) {
 
 class CondVarTest : public ::testing::Test {
  public:
-  CondVarTest() {}
+  CondVarTest() : thread_(&WaitingRunFunction, &baton_, "CondVarTest") {}
 
   virtual void SetUp() {
-    thread_ = ThreadWrapper::CreateThread(&WaitingRunFunction,
-                                          &baton_, "CondVarTest");
-    ASSERT_TRUE(thread_->Start());
+    thread_.Start();
   }
 
   virtual void TearDown() {
@@ -160,14 +158,14 @@ class CondVarTest : public ::testing::Test {
     // and Pass).
     ASSERT_TRUE(baton_.Pass(kShortWaitMs));
     ASSERT_TRUE(baton_.Grab(kShortWaitMs));
-    ASSERT_TRUE(thread_->Stop());
+    thread_.Stop();
   }
 
  protected:
   Baton baton_;
 
  private:
-  rtc::scoped_ptr<ThreadWrapper> thread_;
+  rtc::PlatformThread thread_;
 };
 
 // The SetUp and TearDown functions use condition variables.

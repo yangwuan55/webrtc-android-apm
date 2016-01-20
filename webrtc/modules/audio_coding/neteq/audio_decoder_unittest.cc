@@ -18,20 +18,20 @@
 
 #include "testing/gtest/include/gtest/gtest.h"
 #include "webrtc/base/scoped_ptr.h"
-#include "webrtc/modules/audio_coding/codecs/g711/include/audio_decoder_pcm.h"
-#include "webrtc/modules/audio_coding/codecs/g711/include/audio_encoder_pcm.h"
-#include "webrtc/modules/audio_coding/codecs/g722/include/audio_decoder_g722.h"
-#include "webrtc/modules/audio_coding/codecs/g722/include/audio_encoder_g722.h"
-#include "webrtc/modules/audio_coding/codecs/ilbc/include/audio_decoder_ilbc.h"
-#include "webrtc/modules/audio_coding/codecs/ilbc/include/audio_encoder_ilbc.h"
+#include "webrtc/modules/audio_coding/codecs/g711/audio_decoder_pcm.h"
+#include "webrtc/modules/audio_coding/codecs/g711/audio_encoder_pcm.h"
+#include "webrtc/modules/audio_coding/codecs/g722/audio_decoder_g722.h"
+#include "webrtc/modules/audio_coding/codecs/g722/audio_encoder_g722.h"
+#include "webrtc/modules/audio_coding/codecs/ilbc/audio_decoder_ilbc.h"
+#include "webrtc/modules/audio_coding/codecs/ilbc/audio_encoder_ilbc.h"
 #include "webrtc/modules/audio_coding/codecs/isac/fix/include/audio_decoder_isacfix.h"
 #include "webrtc/modules/audio_coding/codecs/isac/fix/include/audio_encoder_isacfix.h"
 #include "webrtc/modules/audio_coding/codecs/isac/main/include/audio_decoder_isac.h"
 #include "webrtc/modules/audio_coding/codecs/isac/main/include/audio_encoder_isac.h"
-#include "webrtc/modules/audio_coding/codecs/opus/include/audio_decoder_opus.h"
-#include "webrtc/modules/audio_coding/codecs/opus/include/audio_encoder_opus.h"
-#include "webrtc/modules/audio_coding/codecs/pcm16b/include/audio_decoder_pcm16b.h"
-#include "webrtc/modules/audio_coding/codecs/pcm16b/include/audio_encoder_pcm16b.h"
+#include "webrtc/modules/audio_coding/codecs/opus/audio_decoder_opus.h"
+#include "webrtc/modules/audio_coding/codecs/opus/audio_encoder_opus.h"
+#include "webrtc/modules/audio_coding/codecs/pcm16b/audio_decoder_pcm16b.h"
+#include "webrtc/modules/audio_coding/codecs/pcm16b/audio_encoder_pcm16b.h"
 #include "webrtc/modules/audio_coding/neteq/tools/resample_input_audio_file.h"
 #include "webrtc/system_wrappers/include/data_log.h"
 #include "webrtc/test/testsupport/fileutils.h"
@@ -158,7 +158,10 @@ class AudioDecoderTest : public ::testing::Test {
                                                  interleaved_input.get());
 
       encoded_info_ = audio_encoder_->Encode(
-          0, interleaved_input.get(), audio_encoder_->SampleRateHz() / 100,
+          0, rtc::ArrayView<const int16_t>(interleaved_input.get(),
+                                           audio_encoder_->NumChannels() *
+                                               audio_encoder_->SampleRateHz() /
+                                               100),
           data_length_ * 2, output);
     }
     EXPECT_EQ(payload_type_, encoded_info_.payload_type);
@@ -563,18 +566,14 @@ TEST_F(AudioDecoderIsacSwbTest, SetTargetBitrate) {
   TestSetAndGetTargetBitratesWithFixedCodec(audio_encoder_.get(), 32000);
 }
 
-// Fails Android ARM64. https://code.google.com/p/webrtc/issues/detail?id=4198
-#if defined(WEBRTC_ANDROID) && defined(WEBRTC_ARCH_ARM64)
-#define MAYBE_EncodeDecode DISABLED_EncodeDecode
-#else
-#define MAYBE_EncodeDecode EncodeDecode
-#endif
-TEST_F(AudioDecoderIsacFixTest, MAYBE_EncodeDecode) {
+TEST_F(AudioDecoderIsacFixTest, EncodeDecode) {
   int tolerance = 11034;
   double mse = 3.46e6;
   int delay = 54;  // Delay from input to output.
-#ifdef WEBRTC_ANDROID
+#if defined(WEBRTC_ANDROID) && defined(WEBRTC_ARCH_ARM)
   static const int kEncodedBytes = 685;
+#elif defined(WEBRTC_ANDROID) && defined(WEBRTC_ARCH_ARM64)
+  static const int kEncodedBytes = 673;
 #else
   static const int kEncodedBytes = 671;
 #endif

@@ -73,6 +73,15 @@ public class PeerConnectionFactory {
   // Field trial initialization. Must be called before PeerConnectionFactory
   // is created.
   public static native void initializeFieldTrials(String fieldTrialsInitString);
+  // Internal tracing initialization. Must be called before PeerConnectionFactory is created to
+  // prevent racing with tracing code.
+  public static native void initializeInternalTracer();
+  // Internal tracing shutdown, called to prevent resource leaks. Must be called after
+  // PeerConnectionFactory is gone to prevent races with code performing tracing.
+  public static native void shutdownInternalTracer();
+  // Start/stop internal capturing of internal tracing.
+  public static native boolean startInternalTracingCapture(String tracing_filename);
+  public static native void stopInternalTracingCapture();
 
   public PeerConnectionFactory() {
     nativeFactory = nativeCreatePeerConnectionFactory();
@@ -131,12 +140,52 @@ public class PeerConnectionFactory {
         nativeFactory, id, source.nativeSource));
   }
 
+  // Starts recording an AEC dump. Ownership of the file is transfered to the
+  // native code. If an AEC dump is already in progress, it will be stopped and
+  // a new one will start using the provided file.
+  public boolean startAecDump(int file_descriptor) {
+    return nativeStartAecDump(nativeFactory, file_descriptor);
+  }
+
+  // Stops recording an AEC dump. If no AEC dump is currently being recorded,
+  // this call will have no effect.
+  public void stopAecDump() {
+    nativeStopAecDump(nativeFactory);
+  }
+
+  // Starts recording an RTC event log. Ownership of the file is transfered to
+  // the native code. If an RTC event log is already being recorded, it will be
+  // stopped and a new one will start using the provided file.
+  public boolean startRtcEventLog(int file_descriptor) {
+    return nativeStartRtcEventLog(nativeFactory, file_descriptor);
+  }
+
+  // Stops recording an RTC event log. If no RTC event log is currently being
+  // recorded, this call will have no effect.
+  public void StopRtcEventLog() {
+    nativeStopRtcEventLog(nativeFactory);
+  }
+
   public void setOptions(Options options) {
     nativeSetOptions(nativeFactory, options);
   }
 
+  @Deprecated
   public void setVideoHwAccelerationOptions(Object renderEGLContext) {
-    nativeSetVideoHwAccelerationOptions(nativeFactory, renderEGLContext);
+    nativeSetVideoHwAccelerationOptions(nativeFactory, renderEGLContext, renderEGLContext);
+  }
+
+  /** Set the EGL context used by HW Video encoding and decoding.
+   *
+   *
+   * @param localEGLContext   An instance of javax.microedition.khronos.egl.EGLContext.
+   *                          Must be the same as used by VideoCapturerAndroid and any local
+   *                          video renderer.
+   * @param remoteEGLContext  An instance of javax.microedition.khronos.egl.EGLContext.
+   *                          Must be the same as used by any remote video renderer.
+   */
+  public void setVideoHwAccelerationOptions(Object localEGLContext, Object remoteEGLContext) {
+    nativeSetVideoHwAccelerationOptions(nativeFactory, localEGLContext, remoteEGLContext);
   }
 
   public void dispose() {
@@ -201,10 +250,18 @@ public class PeerConnectionFactory {
   private static native long nativeCreateAudioTrack(
       long nativeFactory, String id, long nativeSource);
 
+  private static native boolean nativeStartAecDump(long nativeFactory, int file_descriptor);
+
+  private static native void nativeStopAecDump(long nativeFactory);
+
+  private static native boolean nativeStartRtcEventLog(long nativeFactory, int file_descriptor);
+
+  private static native void nativeStopRtcEventLog(long nativeFactory);
+
   public native void nativeSetOptions(long nativeFactory, Options options);
 
   private static native void nativeSetVideoHwAccelerationOptions(
-      long nativeFactory, Object renderEGLContext);
+      long nativeFactory, Object localEGLContext, Object remoteEGLContext);
 
   private static native void nativeThreadsCallbacks(long nativeFactory);
 

@@ -17,8 +17,8 @@
 #include "webrtc/modules/audio_device/android/audio_manager.h"
 #include "webrtc/modules/audio_device/include/audio_device_defines.h"
 #include "webrtc/modules/audio_device/audio_device_generic.h"
-#include "webrtc/modules/utility/interface/helpers_android.h"
-#include "webrtc/modules/utility/interface/jvm_android.h"
+#include "webrtc/modules/utility/include/helpers_android.h"
+#include "webrtc/modules/utility/include/jvm_android.h"
 
 namespace webrtc {
 
@@ -49,7 +49,7 @@ class AudioRecordJni {
                    rtc::scoped_ptr<GlobalRef> audio_track);
     ~JavaAudioRecord();
 
-    int InitRecording(int sample_rate, int channels);
+    int InitRecording(int sample_rate, size_t channels);
     bool StartRecording();
     bool StopRecording();
     bool EnableBuiltInAEC(bool enable);
