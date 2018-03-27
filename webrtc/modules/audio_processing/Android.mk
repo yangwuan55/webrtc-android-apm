@@ -37,7 +37,8 @@ LOCAL_CFLAGS := \
     $(MY_WEBRTC_COMMON_DEFS) \
     '-DWEBRTC_NS_FIXED' \
     '-DWEBRTC_ANDROID_PLATFORM_BUILD' \
-    '-DWEBRTC_AUDIOPROC_DEBUG_DUMP'
+    '-DNWEBRTC_AUDIOPROC_DEBUG_DUMP' \
+    -std=c++11
 #   floating point
 #   -DWEBRTC_NS_FLOAT'
 
@@ -59,6 +60,8 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../../common_audio/signal_processing/include \
     $(LOCAL_PATH)/../../common_audio/vad/include \
     $(LOCAL_PATH)/../../system_wrappers/include \
+    /Users/ymr/Library/Android/sdk/ndk-bundle/sources/cxx-stl/gnu-libstdc++/4.9/include \
+    /Users/ymr/Library/Android/sdk/ndk-bundle/sources/cxx-stl/gnu-libstdc++/4.9/libs/mips/include/ \
     external/protobuf/src
 
 ifdef WEBRTC_STL
@@ -90,7 +93,8 @@ LOCAL_SRC_FILES:= \
 LOCAL_CFLAGS := \
     $(MY_WEBRTC_COMMON_DEFS) \
     '-DWEBRTC_ANDROID_PLATFORM_BUILD' \
-    '-DWEBRTC_AUDIOPROC_DEBUG_DUMP'
+    '-DNWEBRTC_AUDIOPROC_DEBUG_DUMP' \
+    -std=c++11
 
 LOCAL_CFLAGS_arm := $(MY_WEBRTC_COMMON_DEFS_arm)
 LOCAL_CFLAGS_x86 := $(MY_WEBRTC_COMMON_DEFS_x86)
@@ -150,7 +154,8 @@ LOCAL_CFLAGS := \
     $(MY_WEBRTC_COMMON_DEFS) \
     '-DWEBRTC_AUDIOPROC_FIXED_PROFILE' \
     '-DWEBRTC_ANDROID_PLATFORM_BUILD' \
-    '-DWEBRTC_AUDIOPROC_DEBUG_DUMP' \
+    '-DNWEBRTC_AUDIOPROC_DEBUG_DUMP' \
+    -std=c++11 \
 
 LOCAL_CFLAGS_arm := $(MY_WEBRTC_COMMON_DEFS_arm)
 LOCAL_CFLAGS_x86 := $(MY_WEBRTC_COMMON_DEFS_x86)

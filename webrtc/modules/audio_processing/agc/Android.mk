@@ -31,6 +31,8 @@ LOCAL_SRC_FILES := \
 LOCAL_CFLAGS := \
     $(MY_WEBRTC_COMMON_DEFS)
 
+LOCAL_CXXFLAGS += $(MY_WEBRTC_COMMON_DEFS) -std=c++11
+
 LOCAL_CFLAGS_arm := $(MY_WEBRTC_COMMON_DEFS_arm)
 LOCAL_CFLAGS_x86 := $(MY_WEBRTC_COMMON_DEFS_x86)
 LOCAL_CFLAGS_mips := $(MY_WEBRTC_COMMON_DEFS_mips)
@@ -41,7 +43,9 @@ LOCAL_CFLAGS_mips64 := $(MY_WEBRTC_COMMON_DEFS_mips64)
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/include \
     $(LOCAL_PATH)/../../../.. \
-    $(LOCAL_PATH)/../../../common_audio/signal_processing/include
+    $(LOCAL_PATH)/../../../common_audio/signal_processing/include \
+    /Users/ymr/Library/Android/sdk/ndk-bundle/sources/cxx-stl/gnu-libstdc++/4.9/include \
+    /Users/ymr/Library/Android/sdk/ndk-bundle/sources/cxx-stl/gnu-libstdc++/4.9/libs/mips/include/ \
 
 ifdef WEBRTC_STL
 LOCAL_NDK_STL_VARIANT := $(WEBRTC_STL)

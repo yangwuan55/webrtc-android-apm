@@ -10,7 +10,7 @@
 
 #include <sys/system_properties.h>
 #ifdef __arm__
-#include <machine/cpu-features.h>
+#include <cpu-features.h>
 #endif
 #include <pthread.h>
 #include "cpu-features.h"

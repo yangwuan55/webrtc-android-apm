@@ -44,7 +44,8 @@ LOCAL_SRC_FILES := \
     spl_sqrt.c \
     splitting_filter.c \
     sqrt_of_one_minus_x_squared.c \
-    vector_scaling_operations.c
+    vector_scaling_operations.c \
+    spl_sqrt_floor.c 
 
 # Flags passed to both C and C++ files.
 LOCAL_CFLAGS := \

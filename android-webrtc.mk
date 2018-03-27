@@ -13,6 +13,7 @@ MY_WEBRTC_COMMON_DEFS := \
     '-DWEBRTC_LINUX' \
     '-DWEBRTC_THREAD_RR' \
     '-DWEBRTC_CLOCK_TYPE_REALTIME' \
+    '-DWEBRTC_NS_FIXED' \
     '-DWEBRTC_ANDROID'
 #    The following macros are used by modules,
 #    we might need to re-organize them

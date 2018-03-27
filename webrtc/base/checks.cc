@@ -18,7 +18,7 @@
 
 #if defined(__GLIBCXX__) && !defined(__UCLIBC__)
 #include <cxxabi.h>
-#include <execinfo.h>
+//#include <execinfo.h>
 #endif
 
 #if defined(WEBRTC_ANDROID)
@@ -56,31 +56,31 @@ void PrintError(const char* format, ...) {
 // advanced stace trace system; also more difficult to copy.
 void DumpBacktrace() {
 #if defined(__GLIBCXX__) && !defined(__UCLIBC__)
-  void* trace[100];
-  int size = backtrace(trace, sizeof(trace) / sizeof(*trace));
-  char** symbols = backtrace_symbols(trace, size);
-  PrintError("\n==== C stack trace ===============================\n\n");
-  if (size == 0) {
-    PrintError("(empty)\n");
-  } else if (symbols == NULL) {
-    PrintError("(no symbols)\n");
-  } else {
-    for (int i = 1; i < size; ++i) {
-      char mangled[201];
-      if (sscanf(symbols[i], "%*[^(]%*[(]%200[^)+]", mangled) == 1) {  // NOLINT
-        PrintError("%2d: ", i);
-        int status;
-        size_t length;
-        char* demangled = abi::__cxa_demangle(mangled, NULL, &length, &status);
-        PrintError("%s\n", demangled != NULL ? demangled : mangled);
-        free(demangled);
-      } else {
-        // If parsing failed, at least print the unparsed symbol.
-        PrintError("%s\n", symbols[i]);
-      }
-    }
-  }
-  free(symbols);
+//  void* trace[100];
+//  int size = backtrace(trace, sizeof(trace) / sizeof(*trace));
+//  char** symbols = backtrace_symbols(trace, size);
+//  PrintError("\n==== C stack trace ===============================\n\n");
+//  if (size == 0) {
+//    PrintError("(empty)\n");
+//  } else if (symbols == NULL) {
+//    PrintError("(no symbols)\n");
+//  } else {
+//    for (int i = 1; i < size; ++i) {
+//      char mangled[201];
+//      if (sscanf(symbols[i], "%*[^(]%*[(]%200[^)+]", mangled) == 1) {  // NOLINT
+//        PrintError("%2d: ", i);
+//        int status;
+//        size_t length;
+//        char* demangled = abi::__cxa_demangle(mangled, NULL, &length, &status);
+//        PrintError("%s\n", demangled != NULL ? demangled : mangled);
+//        free(demangled);
+//      } else {
+//        // If parsing failed, at least print the unparsed symbol.
+//        PrintError("%s\n", symbols[i]);
+//      }
+//    }
+//  }
+//  free(symbols);
 #endif
 }
 
