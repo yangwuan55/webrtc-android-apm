@@ -8,6 +8,7 @@
 
 # These defines will apply to all source files
 # Think again before changing it
+COUSTOM_NDK_PATH := $(NDK_HOME)
 MY_WEBRTC_COMMON_DEFS := \
     '-DWEBRTC_POSIX' \
     '-DWEBRTC_LINUX' \

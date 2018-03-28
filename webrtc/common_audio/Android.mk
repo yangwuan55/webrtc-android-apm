@@ -53,8 +53,8 @@ LOCAL_CFLAGS_mips64 := $(MY_WEBRTC_COMMON_DEFS_mips64)
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH) \
     $(LOCAL_PATH)/../.. \
-    /Users/ymr/Library/Android/sdk/ndk-bundle/sources/cxx-stl/gnu-libstdc++/4.9/include \
-    /Users/ymr/Library/Android/sdk/ndk-bundle/sources/cxx-stl/gnu-libstdc++/4.9/libs/mips/include/ \
+    $(COUSTOM_NDK_PATH)/sources/cxx-stl/gnu-libstdc++/4.9/include \
+    $(COUSTOM_NDK_PATH)/sources/cxx-stl/gnu-libstdc++/4.9/libs/mips/include/ \
 
 ifdef WEBRTC_STL
 LOCAL_NDK_STL_VARIANT := $(WEBRTC_STL)
